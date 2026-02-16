@@ -3,13 +3,13 @@ import type { GameState, Move } from "./types";
 
 const API_URL = "http://localhost:8000";
 
-export const createGame = async (playerId: string): Promise<GameState> => {
-  const response = await axios.post(`${API_URL}/games`, { player_id: playerId });
+export const createGame = async (playerId: string, playerName: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games`, { player_id: playerId, player_name: playerName });
   return response.data;
 };
 
-export const joinGame = async (gameId: string, playerId: string): Promise<GameState> => {
-  const response = await axios.post(`${API_URL}/games/${gameId}/join`, { player_id: playerId });
+export const joinGame = async (gameId: string, playerId: string, playerName: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games/${gameId}/join`, { player_id: playerId, player_name: playerName });
   return response.data;
 };
 

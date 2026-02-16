@@ -6,6 +6,18 @@ export interface GameState {
   winner: "red" | "black" | null;
   red_player_id?: string;
   black_player_id?: string;
+  red_player_name?: string;
+  black_player_name?: string;
+  last_move?: {
+    start_row: number;
+    start_col: number;
+    end_row: number;
+    end_col: number;
+  };
+  active_piece?: {
+    row: number;
+    col: number;
+  };
 }
 
 export interface Move {

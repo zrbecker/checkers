@@ -19,6 +19,7 @@ function App() {
   // Lobby State
   const [joinInputId, setJoinInputId] = useState("");
   const [playerId, setPlayerId] = useState<string>("");
+  const [playerName, setPlayerName] = useState<string>("");
 
   // Sound Effect
   const playTurnSound = () => {
@@ -44,7 +45,7 @@ function App() {
       }
   };
 
-  // Initialize Player ID
+  // Initialize Player ID and Name
   useEffect(() => {
     let storedId = localStorage.getItem("checkers_player_id");
     if (!storedId) {
@@ -52,38 +53,50 @@ function App() {
         localStorage.setItem("checkers_player_id", storedId);
     }
     setPlayerId(storedId);
+
+    const storedName = localStorage.getItem("checkers_player_name");
+    if (storedName) {
+        setPlayerName(storedName);
+    }
   }, []);
 
-  // Handle Routing / Game Joining
+  // Handle Routing / Game Checking
   useEffect(() => {
-      if (gameId && playerId) {
-          // If URL has ID but we haven't loaded it yet (or loaded a different one)
-          if (!game || game.id !== gameId) {
-              const fetchGame = async () => {
-                  setLoading(true);
-                  try {
-                      // Attempt to join/rejoin
-                      const joinedGame = await joinGame(gameId, playerId);
-                      setGame(joinedGame);
-                      setError(null);
-                  } catch (err: any) {
-                      console.error(err);
-                      setError(err.response?.data?.detail || "Failed to join game");
-                      // Optionally navigate back to lobby if 404
-                      if (err.response?.status === 404) {
-                          navigate("/");
-                      }
-                  } finally {
-                      setLoading(false);
+      if (gameId && playerId && !game) {
+          const checkGameStatus = async () => {
+              setLoading(true);
+              try {
+                  const fetchedGame = await getGame(gameId);
+                  
+                  // Check if I am a participant
+                  const isParticipant = fetchedGame.red_player_id === playerId || fetchedGame.black_player_id === playerId;
+                  
+                  // Check if game is full
+                  const isFull = fetchedGame.red_player_id && fetchedGame.black_player_id;
+                  
+                  if (isParticipant || isFull) {
+                      // Go straight to board (Rejoin or Spectate)
+                      setGame(fetchedGame);
+                  } else {
+                      // Game is open and I'm not in it -> Show Join Screen
+                      setJoinInputId(gameId);
                   }
-              };
-              fetchGame();
-          }
+              } catch (err: any) {
+                  console.error(err);
+                  setJoinInputId(gameId);
+                  if (err.response?.status === 404) {
+                      setError("Game not found");
+                  }
+              } finally {
+                  setLoading(false);
+              }
+          };
+          checkGameStatus();
       } else if (!gameId && game) {
           // URL is root but we have game state -> Clear it (user went back)
           setGame(null);
       }
-  }, [gameId, playerId]); // Dependency on gameId handles URL changes
+  }, [gameId, playerId]); // Run when ID or PlayerID is ready 
 
   // Polling for updates
   useEffect(() => {
@@ -116,24 +129,57 @@ function App() {
     return () => clearInterval(interval);
   }, [game]);
 
+  const saveName = (name: string) => {
+      setPlayerName(name);
+      localStorage.setItem("checkers_player_name", name);
+  };
+
   const handleCreateGame = async () => {
+      if (!playerName || playerName.length < 5) {
+          setError("Name must be at least 5 characters");
+          return;
+      }
+      saveName(playerName);
+      
       setLoading(true);
       try {
-          const newGame = await createGame(playerId);
+          const newGame = await createGame(playerId, playerName);
           setGame(newGame);
           setError(null);
           navigate(`/game/${newGame.id}`);
-      } catch (err) {
+      } catch (err: any) {
           console.error(err);
-          setError("Failed to create game");
+          setError(err.response?.data?.detail?.[0]?.msg || "Failed to create game");
       } finally {
           setLoading(false);
       }
   };
 
-  const handleManualJoin = () => {
+  const handleManualJoin = async () => {
       if (!joinInputId) return;
-      navigate(`/game/${joinInputId}`);
+      if (!playerName || playerName.length < 5) {
+          setError("Name must be at least 5 characters");
+          return;
+      }
+      saveName(playerName);
+      
+      // If we are already on the correct URL, navigating won't trigger anything.
+      // We must explicitly call the API.
+      setLoading(true);
+      try {
+          const joinedGame = await joinGame(joinInputId, playerId, playerName);
+          setGame(joinedGame);
+          setError(null);
+          // Update URL if we came from root
+          if (!gameId) {
+              navigate(`/game/${joinInputId}`);
+          }
+      } catch (err: any) {
+          console.error(err);
+          setError(err.response?.data?.detail || "Failed to join game");
+      } finally {
+          setLoading(false);
+      }
   };
 
   const handleBackToLobby = () => {
@@ -148,8 +194,6 @@ function App() {
     if (!game || !myColor) return;
 
     // Transform Visual -> Logic
-    // If I am Red, the board is flipped (7-row, 7-col)
-    // If I am Black or Spectator, board is standard
     let row = visualRow;
     let col = visualCol;
     if (myColor === "red") {
@@ -157,10 +201,7 @@ function App() {
         col = 7 - visualCol;
     }
 
-    // Enforce Turn
-    if (game.current_turn !== myColor) {
-        return;
-    }
+    if (game.current_turn !== myColor) return;
 
     const piece = game.board[row][col];
     
@@ -168,18 +209,16 @@ function App() {
     const pieceIsRed = piece?.toLowerCase() === "r";
     const pieceIsBlack = piece?.toLowerCase() === "b";
     
-    // Only allow selecting pieces that match my color
     if ((myColor === "red" && pieceIsRed) || (myColor === "black" && pieceIsBlack)) {
         if (selectedSquare && selectedSquare[0] === row && selectedSquare[1] === col) {
-            setSelectedSquare(null); // Deselect if clicking same
+            setSelectedSquare(null); 
         } else {
-            setSelectedSquare([row, col]); // Select new
+            setSelectedSquare([row, col]); 
             setError(null);
         }
         return;
     }
 
-    // 2. If we have a selection and click an empty square, try to move
     if (selectedSquare && !piece) {
       const [startRow, startCol] = selectedSquare;
       
@@ -203,26 +242,90 @@ function App() {
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-stone-900 text-white">Loading...</div>;
 
-  // LOBBY VIEW
-  if (!gameId) {
+  // LOBBY VIEW (No Game Loaded)
+  if (!game) {
+      // SCENARIO 1: We are at a specific game URL (gameId is present)
+      // Show "Join THIS Game" screen
+      if (gameId) {
+          return (
+            <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col items-center justify-center p-4 font-sans">
+                <h1 className="text-5xl font-black mb-8 text-amber-500 tracking-wider drop-shadow-lg">CHECKERS</h1>
+                
+                <div className="bg-stone-800 p-8 rounded-xl shadow-2xl border border-stone-700 w-full max-w-md space-y-6">
+                    <h2 className="text-xl font-bold text-center text-white mb-2">Join Game</h2>
+                    <div className="text-center text-stone-400 font-mono text-sm mb-6 bg-stone-900 p-2 rounded truncate">
+                        {gameId}
+                    </div>
+
+                    <div>
+                        <label className="block text-stone-300 text-sm font-bold mb-2">Your Name</label>
+                        <input 
+                            type="text" 
+                            placeholder="Enter your name (min 5 chars)"
+                            value={playerName}
+                            onChange={(e) => setPlayerName(e.target.value)}
+                            className="w-full bg-stone-900 border border-stone-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors"
+                        />
+                    </div>
+
+                    <button 
+                        onClick={handleManualJoin}
+                        disabled={!playerName || playerName.length < 5}
+                        className="w-full py-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg transition-colors shadow-lg"
+                    >
+                        Join Game
+                    </button>
+
+                    <div className="text-center">
+                        <button onClick={() => navigate("/")} className="text-stone-500 hover:text-stone-300 text-sm underline">
+                            Cancel & Go to Lobby
+                        </button>
+                    </div>
+
+                    {error && (
+                        <div className="p-3 bg-red-900/50 border border-red-500/50 rounded text-red-200 text-sm text-center">
+                            {error}
+                        </div>
+                    )}
+                </div>
+            </div>
+          );
+      }
+
+      // SCENARIO 2: Root Lobby
       return (
         <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col items-center justify-center p-4 font-sans">
-            <h1 className="text-6xl font-black mb-12 text-amber-500 tracking-wider drop-shadow-lg">CHECKERS</h1>
+            <h1 className="text-6xl font-black mb-8 text-amber-500 tracking-wider drop-shadow-lg">CHECKERS</h1>
             
-            <div className="bg-stone-800 p-8 rounded-xl shadow-2xl border border-stone-700 w-full max-w-md space-y-8">
+            <div className="bg-stone-800 p-8 rounded-xl shadow-2xl border border-stone-700 w-full max-w-md space-y-6">
                 
+                {/* Name Input */}
+                <div>
+                    <label className="block text-stone-300 text-sm font-bold mb-2">Your Name</label>
+                    <input 
+                        type="text" 
+                        placeholder="Enter your name (min 5 chars)"
+                        value={playerName}
+                        onChange={(e) => setPlayerName(e.target.value)}
+                        className="w-full bg-stone-900 border border-stone-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors"
+                    />
+                </div>
+
+                <div className="border-t border-stone-600 my-4"></div>
+
                 {/* Create Game */}
                 <div className="text-center">
                     <button 
                         onClick={handleCreateGame}
-                        className="w-full py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xl rounded-lg transition-colors shadow-lg"
+                        disabled={!playerName || playerName.length < 5}
+                        className="w-full py-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg transition-colors shadow-lg"
                     >
                         Create New Game
                     </button>
                     <p className="mt-2 text-stone-400 text-sm">Start a new game as RED</p>
                 </div>
 
-                <div className="relative flex items-center justify-center">
+                <div className="relative flex items-center justify-center my-2">
                     <div className="border-t border-stone-600 w-full"></div>
                     <span className="absolute bg-stone-800 px-3 text-stone-500 font-mono">OR</span>
                 </div>
@@ -240,8 +343,8 @@ function App() {
                         />
                         <button 
                             onClick={handleManualJoin}
-                            disabled={!joinInputId}
-                            className="px-6 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 text-white font-bold rounded-lg transition-colors"
+                            disabled={!joinInputId || !playerName || playerName.length < 5}
+                            className="px-6 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
                         >
                             Join
                         </button>
@@ -258,166 +361,168 @@ function App() {
       );
   }
 
-  // If gameId is present but game not loaded (and not loading), show nothing or error
-  if (!game) {
-      return (
-        <div className="min-h-screen bg-stone-900 text-white flex flex-col items-center justify-center">
-            {error ? (
-                <div className="text-center">
-                    <div className="text-2xl text-red-400 mb-4">Error: {error}</div>
-                    <button onClick={() => navigate("/")} className="text-blue-400 hover:underline">Return to Lobby</button>
-                </div>
-            ) : (
-                <div>Connecting to game...</div>
-            )}
-        </div>
-      );
-  }
-
   const isMyTurn = game.current_turn === myColor;
 
   // Prepare Render Board (Flip if Red)
   let renderBoard = game.board;
-  // Deep copy for rendering logic
   let displayBoard = [...renderBoard.map(r => [...r])]; 
   
   if (myColor === "red") {
       displayBoard = displayBoard.reverse().map(row => row.reverse());
   }
 
+  // Define Player Names for Layout
+  let topPlayerName = "Waiting...";
+  let bottomPlayerName = "Waiting...";
+  let topPlayerColor = "spectator";
+  let bottomPlayerColor = "spectator";
+
+  if (myColor === "red") {
+      bottomPlayerName = game.red_player_name || "You (Red)";
+      bottomPlayerColor = "red";
+      topPlayerName = game.black_player_name || "Waiting for Black...";
+      topPlayerColor = "black";
+  } else if (myColor === "black") {
+      bottomPlayerName = game.black_player_name || "You (Black)";
+      bottomPlayerColor = "black";
+      topPlayerName = game.red_player_name || "Waiting for Red...";
+      topPlayerColor = "red";
+  } else {
+      // Spectator View (Standard: Red Top, Black Bottom)
+      topPlayerName = game.red_player_name || "Red";
+      topPlayerColor = "red";
+      bottomPlayerName = game.black_player_name || "Black";
+      bottomPlayerColor = "black";
+  }
+
   return (
-    <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col items-center justify-center p-4 font-sans">
+    <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col items-center justify-start pt-8 p-4 font-sans">
       
       {/* Header Info */}
-      <div className="mb-6 w-full max-w-lg flex flex-col items-center gap-4">
-        
-        {/* Game ID Badge */}
+      <div className="mb-4 w-full max-w-lg flex flex-col items-center gap-2">
         <div className="bg-stone-800 px-4 py-1 rounded-full text-stone-400 font-mono text-xs border border-stone-700 max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
             Game ID: <span className="text-amber-500 font-bold text-xs">{game.id}</span>
         </div>
-
-        {/* Player Status */}
-        <div className="flex gap-2 items-center">
-            <span className="text-stone-400">You are playing as:</span>
-            <span className={clsx("font-bold px-3 py-1 rounded uppercase text-sm", 
-                myColor === "red" ? "bg-red-900 text-red-100 border border-red-500" :
-                myColor === "black" ? "bg-slate-800 text-slate-100 border border-slate-500" :
-                "bg-purple-900 text-purple-100"
-            )}>
-                {myColor}
-            </span>
-        </div>
       </div>
       
-      {/* Turn Indicator */}
-      <div className="flex justify-between items-center w-full max-w-lg mb-6 px-4">
-        <div className={clsx("px-6 py-3 rounded-lg transition-all duration-300 border-2", 
-            game.current_turn === "red" 
-                ? "bg-red-900/50 border-red-500 text-red-100 shadow-[0_0_15px_rgba(239,68,68,0.5)] scale-105" 
-                : "border-transparent text-stone-600 opacity-30 scale-95")}>
-          <span className="font-bold text-lg">RED</span>
-        </div>
-        
-        <div className="flex flex-col items-center">
-            <div className={clsx("text-xs font-bold uppercase tracking-widest mb-1 transition-colors duration-500", isMyTurn ? "text-green-400 animate-pulse" : "text-stone-600")}>
-                {isMyTurn ? "YOUR TURN" : "OPPONENT'S TURN"}
-            </div>
-            {/* Visual Flash Bar */}
-            <div className={clsx("w-24 h-2 rounded-full overflow-hidden transition-all duration-500 shadow-lg", isMyTurn ? "bg-green-500 shadow-green-500/50" : "bg-stone-800")}></div>
-        </div>
-
-        <div className={clsx("px-6 py-3 rounded-lg transition-all duration-300 border-2", 
-            game.current_turn === "black" 
-                ? "bg-slate-800 border-slate-400 text-slate-100 shadow-[0_0_15px_rgba(148,163,184,0.5)] scale-105" 
-                : "border-transparent text-stone-600 opacity-30 scale-95")}>
-          <span className="font-bold text-lg">BLACK</span>
-        </div>
-      </div>
-
-      {game.winner && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-opacity duration-1000">
-            <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-fade-in-up">
-                <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">{game.winner.toUpperCase()} WINS!</h2>
-                <button 
-                    onClick={handleBackToLobby}
-                    className="mt-6 px-8 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors"
-                >
-                    Back to Lobby
-                </button>
-            </div>
-        </div>
-      )}
-      
-      {error && (
-        <div className="mb-6 text-red-200 font-semibold bg-red-900/80 border border-red-500 px-6 py-3 rounded-lg shadow-lg animate-pulse">
-          ⚠️ {error}
-        </div>
-      )}
-
-      {/* Board Container */}
-      <div className={clsx("relative p-3 bg-stone-700 rounded-lg shadow-2xl transition-opacity duration-300", !isMyTurn && "opacity-90")}>
-          <div 
-            className="grid grid-cols-8 gap-0 border-4 border-[#5c4033] bg-[#5c4033]" 
-            style={{ 
-                width: "min(80vh, 80vw)", 
-                height: "min(80vh, 80vw)",
-                maxHeight: "600px",
-                maxWidth: "600px"
-            }}
-          >
-            {displayBoard.map((row, rIndex) => (
-            row.map((cell, cIndex) => {
-                // Determine logic coords for isSelected/LastMove check
-                let logicRow = rIndex;
-                let logicCol = cIndex;
-                if (myColor === "red") {
-                    logicRow = 7 - rIndex;
-                    logicCol = 7 - cIndex;
-                }
-                
-                // Check Last Move
-                const isLastMoveSource = game.last_move?.start_row === logicRow && game.last_move?.start_col === logicCol;
-                const isLastMoveDest = game.last_move?.end_row === logicRow && game.last_move?.end_col === logicCol;
-
-                return (
-                <div key={`${rIndex}-${cIndex}`} className="w-full h-full">
-                    <Square
-                    row={rIndex}
-                    col={cIndex}
-                    piece={cell}
-                    isSelected={selectedSquare?.[0] === logicRow && selectedSquare?.[1] === logicCol}
-                    isLastMoveSource={isLastMoveSource}
-                    isLastMoveDest={isLastMoveDest}
-                    isValidTarget={false} 
-                    onClick={() => handleSquareClick(rIndex, cIndex)}
-                    />
-                </div>
-                );
-            })
-            ))}
-          </div>
+      {/* Game Layout Container - Aligns Width of Nameplates & Board */}
+      <div className="flex flex-col gap-2 w-full max-w-[600px]" style={{ width: "min(80vh, 80vw)" }}>
           
-          {/* Waiting for Opponent Overlay */}
-          {!game.black_player_id && (
-              <div className="absolute inset-0 z-40 bg-black/60 flex flex-col items-center justify-center text-center p-6 backdrop-blur-sm rounded-lg">
-                  <div className="text-3xl font-bold text-white mb-2">Waiting for Opponent...</div>
-                  <div className="text-stone-300 mb-6">Share this link with a friend:</div>
-                  
-                  <div className="flex gap-2 max-w-full">
-                    <div className="bg-stone-800 text-amber-500 text-lg font-mono font-bold px-4 py-3 rounded-lg border-2 border-amber-500/50 shadow-lg select-all overflow-x-auto whitespace-nowrap max-w-[50vw]">
-                        {window.location.href}
-                    </div>
-                    <button 
-                        onClick={() => navigator.clipboard.writeText(window.location.href)}
-                        className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-bold transition-colors"
-                        title="Copy Link"
-                    >
-                        Copy
-                    </button>
-                  </div>
+          {/* TOP PLAYER (Opponent) */}
+          <div className={clsx(
+              "w-full px-6 py-3 rounded-t-xl border-t-4 flex justify-between items-center transition-all duration-300",
+              topPlayerColor === "red" ? "bg-red-900/20 border-red-600" : "bg-zinc-800/50 border-zinc-500",
+              game.current_turn === topPlayerColor && "shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-opacity-40"
+          )}>
+              <div className="flex items-center gap-3">
+                  <div className={clsx("w-3 h-3 rounded-full", topPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
+                  <span className="font-bold text-xl tracking-wide text-stone-200">{topPlayerName}</span>
               </div>
-          )}
+              {game.current_turn === topPlayerColor && (
+                  <span className="text-xs font-bold uppercase tracking-widest text-stone-400 animate-pulse">Thinking...</span>
+              )}
+          </div>
+
+          {/* Board Container */}
+          <div className={clsx("relative p-3 bg-stone-700 shadow-2xl transition-opacity duration-300 w-full aspect-square", !isMyTurn && "opacity-95")}>
+              <div 
+                className="grid grid-cols-8 gap-0 border-4 border-[#5c4033] bg-[#5c4033] w-full h-full" 
+              >
+                {displayBoard.map((row, rIndex) => (
+                row.map((cell, cIndex) => {
+                    // Determine logic coords for isSelected/LastMove check
+                    let logicRow = rIndex;
+                    let logicCol = cIndex;
+                    if (myColor === "red") {
+                        logicRow = 7 - rIndex;
+                        logicCol = 7 - cIndex;
+                    }
+                    
+                    // Check Last Move
+                    const isLastMoveSource = game.last_move?.start_row === logicRow && game.last_move?.start_col === logicCol;
+                    const isLastMoveDest = game.last_move?.end_row === logicRow && game.last_move?.end_col === logicCol;
+
+                    return (
+                    <div key={`${rIndex}-${cIndex}`} className="w-full h-full">
+                        <Square
+                        row={rIndex}
+                        col={cIndex}
+                        piece={cell}
+                        isSelected={selectedSquare?.[0] === logicRow && selectedSquare?.[1] === logicCol}
+                        isLastMoveSource={isLastMoveSource}
+                        isLastMoveDest={isLastMoveDest}
+                        isValidTarget={false} 
+                        onClick={() => handleSquareClick(rIndex, cIndex)}
+                        />
+                    </div>
+                    );
+                })
+                ))}
+              </div>
+              
+              {/* Waiting for Opponent Overlay */}
+              {!game.black_player_id && (
+                  <div className="absolute inset-0 z-40 bg-black/60 flex flex-col items-center justify-center text-center p-6 backdrop-blur-sm rounded-lg">
+                      <div className="text-3xl font-bold text-white mb-2">Waiting for Opponent...</div>
+                      <div className="text-stone-300 mb-6">Share this link with a friend:</div>
+                      
+                      <div className="flex gap-2 max-w-full">
+                        <div className="bg-stone-800 text-amber-500 text-lg font-mono font-bold px-4 py-3 rounded-lg border-2 border-amber-500/50 shadow-lg select-all overflow-x-auto whitespace-nowrap max-w-[50vw]">
+                            {window.location.href}
+                        </div>
+                        <button 
+                            onClick={() => navigator.clipboard.writeText(window.location.href)}
+                            className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                            title="Copy Link"
+                        >
+                            Copy
+                        </button>
+                      </div>
+                  </div>
+              )}
+              {game.winner && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-opacity duration-1000">
+                    <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-fade-in-up">
+                        <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">{game.winner.toUpperCase()} WINS!</h2>
+                        <div className="text-2xl text-stone-300 mb-8">
+                            Winner: <span className="text-amber-400 font-bold">
+                                {game.winner === "red" ? game.red_player_name : game.black_player_name}
+                            </span>
+                        </div>
+                        <button 
+                            onClick={handleBackToLobby}
+                            className="mt-6 px-8 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors"
+                        >
+                            Back to Lobby
+                        </button>
+                    </div>
+                </div>
+              )}
+              
+              {error && (
+                <div className="absolute top-4 left-4 right-4 z-50 mb-6 text-red-200 font-semibold bg-red-900/80 border border-red-500 px-6 py-3 rounded-lg shadow-lg animate-pulse text-center">
+                  ⚠️ {error}
+                </div>
+              )}
+          </div>
+
+          {/* BOTTOM PLAYER (Me) */}
+          <div className={clsx(
+              "w-full px-6 py-3 rounded-b-xl border-b-4 flex justify-between items-center transition-all duration-300",
+              bottomPlayerColor === "red" ? "bg-red-900/20 border-red-600" : "bg-zinc-800/50 border-zinc-500",
+              game.current_turn === bottomPlayerColor && "shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-opacity-40"
+          )}>
+              <div className="flex items-center gap-3">
+                  <div className={clsx("w-3 h-3 rounded-full", bottomPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
+                  <span className="font-bold text-xl tracking-wide text-stone-200">{bottomPlayerName}</span>
+              </div>
+              {game.current_turn === bottomPlayerColor && (
+                  <span className="text-xs font-bold uppercase tracking-widest text-green-400 animate-pulse">YOUR TURN</span>
+              )}
+          </div>
+      
       </div>
+
     </div>
   );
 }

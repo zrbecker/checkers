@@ -34,7 +34,9 @@ async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get
         current_turn="red",
         status="active",
         red_player_id=request.player_id,
+        red_player_name=request.player_name,
         black_player_id=None,
+        black_player_name=None,
         last_move=None,
         active_piece=None
     )
@@ -59,6 +61,7 @@ async def join_game(game_id: str, request: JoinGameRequest, db: AsyncSession = D
         
     if game.black_player_id is None:
         game.black_player_id = request.player_id
+        game.black_player_name = request.player_name
         await db.commit()
         await db.refresh(game)
         return format_game_response(game)
@@ -152,6 +155,8 @@ def format_game_response(game: Game) -> GameState:
         winner=game.winner,
         red_player_id=game.red_player_id,
         black_player_id=game.black_player_id,
+        red_player_name=game.red_player_name,
+        black_player_name=game.black_player_name,
         last_move=game.last_move,
         active_piece=game.active_piece
     )
