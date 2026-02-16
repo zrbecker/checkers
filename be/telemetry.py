@@ -1,10 +1,12 @@
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from fastapi import FastAPI, Request
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine
 import time
+import threading
+import os
 
 # --- Business Metrics ---
 GAMES_CREATED = Counter(
@@ -54,9 +56,8 @@ CONCURRENT_REQUESTS = Gauge(
 
 def setup_telemetry(app: FastAPI):
     # Initialize Instrumentator
-    # We exclude /metrics from metrics to avoid pollution
+    # We DO NOT use expose(app) anymore as we want a separate port
     instrumentator = Instrumentator(
-        excluded_handlers=["/metrics"],
         should_group_status_codes=False,
         should_ignore_untemplated=True,
         should_instrument_requests_inprogress=True,
@@ -65,8 +66,14 @@ def setup_telemetry(app: FastAPI):
     # Add default metrics (latency, requests, etc.)
     instrumentator.instrument(app)
     
-    # Expose /metrics
-    instrumentator.expose(app)
+    # Start Prometheus Metrics Server on separate port (9091 by default)
+    # This runs in a background thread
+    metrics_port = int(os.getenv("METRICS_PORT", "9091"))
+    try:
+        start_http_server(metrics_port)
+        print(f"Metrics server started on port {metrics_port}")
+    except Exception as e:
+        print(f"Failed to start metrics server on port {metrics_port}: {e}")
     
     # Add concurrent requests middleware
     @app.middleware("http")

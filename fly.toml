@@ -17,7 +17,7 @@ primary_region = 'lax'
   processes = ['app']
 
 [metrics]
-  port = 8080
+  port = 9091
   path = "/metrics"
 
 [[vm]]
