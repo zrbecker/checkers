@@ -34,7 +34,9 @@ async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get
         current_turn="red",
         status="active",
         red_player_id=request.player_id,
-        black_player_id=None
+        black_player_id=None,
+        last_move=None,
+        active_piece=None
     )
     db.add(new_game)
     await db.commit()
@@ -97,19 +99,39 @@ async def make_move(game_id: int, move: Move, db: AsyncSession = Depends(get_db)
     elif game.current_turn == "black":
         if game.black_player_id and game.black_player_id != move.player_id:
             raise HTTPException(status_code=403, detail="It's Black's turn (not you)")
-            
+    
+    # Check if active_piece restriction applies (double jump)
+    active_tuple = None
+    if game.active_piece:
+        active_tuple = (game.active_piece["row"], game.active_piece["col"])
+        
     # Validate logic
-    if not logic.is_valid_move(game.board_state, move, game.current_turn):
+    if not logic.is_valid_move(game.board_state, move, game.current_turn, active_tuple):
         raise HTTPException(status_code=400, detail="Invalid move")
         
     # Apply move
-    new_board, turn_finished = logic.apply_move(game.board_state, move)
+    new_board, turn_finished, next_active_piece = logic.apply_move(game.board_state, move)
     
     game.board_state = list(new_board)
     flag_modified(game, "board_state")
     
+    # Store last move for highlighting
+    game.last_move = {
+        "start_row": move.start_row,
+        "start_col": move.start_col,
+        "end_row": move.end_row,
+        "end_col": move.end_col
+    }
+    flag_modified(game, "last_move")
+    
     if turn_finished:
         game.current_turn = "black" if game.current_turn == "red" else "red"
+        game.active_piece = None
+    else:
+        # Multi-jump required
+        if next_active_piece:
+            game.active_piece = {"row": next_active_piece[0], "col": next_active_piece[1]}
+            flag_modified(game, "active_piece")
         
     # Check winner
     winner = logic.check_winner(game.board_state, game.current_turn)
@@ -129,5 +151,7 @@ def format_game_response(game: Game) -> GameState:
         status=game.status,
         winner=game.winner,
         red_player_id=game.red_player_id,
-        black_player_id=game.black_player_id
+        black_player_id=game.black_player_id,
+        last_move=game.last_move,
+        active_piece=game.active_piece
     )

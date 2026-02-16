@@ -23,6 +23,8 @@ class GameState(BaseModel):
     winner: Optional[str]
     red_player_id: Optional[str]
     black_player_id: Optional[str]
+    last_move: Optional[dict]
+    active_piece: Optional[dict]
 
     class Config:
         from_attributes = True

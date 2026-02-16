@@ -22,16 +22,57 @@ def initialize_board() -> List[List[Optional[str]]]:
                     board[row][col] = BLACK
     return board
 
-def get_valid_moves(board: List[List[Optional[str]]], player: str) -> List[Tuple[int, int, int, int]]:
+def get_possible_captures(board: List[List[Optional[str]]], r: int, c: int, is_red: bool, is_king: bool) -> List[Tuple[int, int, int, int]]:
+    """Helper to find captures for a specific piece at (r, c)"""
+    captures = []
+    
+    # Determine movement directions
+    move_dirs = []
+    if is_king:
+        move_dirs = [-1, 1]
+    elif is_red:
+        move_dirs = [1]
+    else:
+        move_dirs = [-1]
+        
+    for dr in move_dirs:
+        for dc in [-1, 1]:
+            nr2, nc2 = r + 2*dr, c + 2*dc
+            mid_r, mid_c = r + dr, c + dc
+            
+            if 0 <= nr2 < ROWS and 0 <= nc2 < COLS:
+                mid_piece = board[mid_r][mid_c]
+                # Check if landing spot is empty
+                if board[nr2][nc2] is None:
+                        # Check if piece being jumped over exists and is opponent
+                    if mid_piece:
+                        if is_red and mid_piece.lower() == "b":
+                            captures.append((r, c, nr2, nc2))
+                        elif not is_red and mid_piece.lower() == "r":
+                            captures.append((r, c, nr2, nc2))
+    return captures
+
+def get_valid_moves(board: List[List[Optional[str]]], player: str, active_piece: Optional[Tuple[int, int]] = None) -> List[Tuple[int, int, int, int]]:
     """
     Returns a list of all valid moves for the given player.
     Each move is a tuple: (start_row, start_col, end_row, end_col).
+    
+    If active_piece is set (Tuple[r, c]), ONLY moves for that piece are returned (used for multi-jump).
     """
     moves = []
     captures = []
     
     is_red = player == "red"
     
+    # If active piece is enforced (double jump scenario), only check that piece
+    if active_piece:
+        r, c = active_piece
+        piece = board[r][c]
+        if piece:
+            is_king = piece.isupper()
+            return get_possible_captures(board, r, c, is_red, is_king)
+        return []
+
     # Iterate through all board positions
     for r in range(ROWS):
         for c in range(COLS):
@@ -47,8 +88,13 @@ def get_valid_moves(board: List[List[Optional[str]]], player: str) -> List[Tuple
                 
             is_king = piece.isupper()
             
-            # Determine movement directions
-            # Red moves "down" (increasing row index), Black moves "up" (decreasing row index)
+            # Add captures for this piece
+            piece_captures = get_possible_captures(board, r, c, is_red, is_king)
+            captures.extend(piece_captures)
+            
+            # Check normal moves (only if we haven't found captures yet? Standard rules say if ANY capture exists, must capture)
+            # We'll collect normal moves too, but discard them later if captures exist.
+            
             move_dirs = []
             if is_king:
                 move_dirs = [-1, 1]
@@ -65,28 +111,13 @@ def get_valid_moves(board: List[List[Optional[str]]], player: str) -> List[Tuple
                         if board[nr][nc] is None:
                             moves.append((r, c, nr, nc))
                         
-                    # 2. Check for capture (2 steps)
-                    nr2, nc2 = r + 2*dr, c + 2*dc
-                    mid_r, mid_c = r + dr, c + dc
-                    
-                    if 0 <= nr2 < ROWS and 0 <= nc2 < COLS:
-                        mid_piece = board[mid_r][mid_c]
-                        # Check if landing spot is empty
-                        if board[nr2][nc2] is None:
-                             # Check if piece being jumped over exists and is opponent
-                            if mid_piece:
-                                if is_red and mid_piece.lower() == "b":
-                                    captures.append((r, c, nr2, nc2))
-                                elif not is_red and mid_piece.lower() == "r":
-                                    captures.append((r, c, nr2, nc2))
 
     # Strict rule: if captures are available, you must capture.
-    # For MVP, let's enforce this to keep it standard-ish.
     if captures:
         return captures
     return moves
 
-def is_valid_move(board: List[List[Optional[str]]], move_data: Any, player: str) -> bool:
+def is_valid_move(board: List[List[Optional[str]]], move_data: Any, player: str, active_piece: Optional[Tuple[int, int]] = None) -> bool:
     # Handle move_data being a dict or object
     if isinstance(move_data, dict):
         sr, sc = move_data["start_row"], move_data["start_col"]
@@ -95,10 +126,16 @@ def is_valid_move(board: List[List[Optional[str]]], move_data: Any, player: str)
         sr, sc = move_data.start_row, move_data.start_col
         er, ec = move_data.end_row, move_data.end_col
         
-    valid_moves = get_valid_moves(board, player)
+    valid_moves = get_valid_moves(board, player, active_piece)
     return (sr, sc, er, ec) in valid_moves
 
-def apply_move(board: List[List[Optional[str]]], move_data: Any) -> Tuple[List[List[Optional[str]]], bool]:
+def apply_move(board: List[List[Optional[str]]], move_data: Any) -> Tuple[List[List[Optional[str]]], bool, Optional[Tuple[int, int]]]:
+    """
+    Applies the move to the board.
+    Returns (new_board, turn_finished, next_active_piece).
+    turn_finished: True if the turn is over, False if the player gets another move (multi-jump).
+    next_active_piece: The coordinates (row, col) of the piece that must move next (if turn not finished).
+    """
     if isinstance(move_data, dict):
         sr, sc = move_data["start_row"], move_data["start_col"]
         er, ec = move_data["end_row"], move_data["end_col"]
@@ -107,9 +144,15 @@ def apply_move(board: List[List[Optional[str]]], move_data: Any) -> Tuple[List[L
         er, ec = move_data.end_row, move_data.end_col
     
     piece = board[sr][sc]
+    is_king = piece.isupper()
+    is_red = piece.lower() == "r"
+    
     # Move piece
     board[er][ec] = piece
     board[sr][sc] = None
+    
+    turn_finished = True
+    next_active_piece = None
     
     # Handle Capture (remove jumped piece)
     if abs(sr - er) == 2:
@@ -117,13 +160,33 @@ def apply_move(board: List[List[Optional[str]]], move_data: Any) -> Tuple[List[L
         mid_c = (sc + ec) // 2
         board[mid_r][mid_c] = None
         
-    # King Promotion
-    if piece == RED and er == ROWS - 1:
-        board[er][ec] = RED_KING
-    elif piece == BLACK and er == 0:
-        board[er][ec] = BLACK_KING
+        # Check for multi-jump
+        # Check if the moved piece (now at er, ec) can capture again
+        # Note: King promotion ends the turn immediately in standard rules, even if another jump is available.
+        promoted = False
+        if piece == RED and er == ROWS - 1:
+            board[er][ec] = RED_KING
+            promoted = True
+        elif piece == BLACK and er == 0:
+            board[er][ec] = BLACK_KING
+            promoted = True
+            
+        if not promoted:
+            # Check if this specific piece can capture again
+            possible_captures = get_possible_captures(board, er, ec, is_red, is_king)
+            if possible_captures:
+                turn_finished = False
+                next_active_piece = (er, ec)
         
-    return board, True
+    else:
+        # Normal move, always finishes turn
+        # Check King Promotion
+        if piece == RED and er == ROWS - 1:
+            board[er][ec] = RED_KING
+        elif piece == BLACK and er == 0:
+            board[er][ec] = BLACK_KING
+        
+    return board, turn_finished, next_active_piece
 
 def check_winner(board: List[List[Optional[str]]], current_turn: str) -> Optional[str]:
     red_count = 0
@@ -143,6 +206,7 @@ def check_winner(board: List[List[Optional[str]]], current_turn: str) -> Optiona
         
     # Check for stalemate (no valid moves for current player)
     # If it's current_turn's move and they have no moves, they lose.
+    # Note: We don't pass active_piece here because stalemate is about having ANY move
     if not get_valid_moves(board, current_turn):
         return "black" if current_turn == "red" else "red"
         

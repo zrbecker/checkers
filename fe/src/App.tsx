@@ -16,6 +16,31 @@ function App() {
   const [joinGameId, setJoinGameId] = useState("");
   const [playerId, setPlayerId] = useState<string>("");
 
+  // Sound Effect
+  const playTurnSound = () => {
+      // Simple Beep using Web Audio API to avoid external assets
+      try {
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // A4
+          oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1); // Slide up to A5
+          
+          gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+          
+          oscillator.start();
+          oscillator.stop(audioCtx.currentTime + 0.3);
+      } catch (e) {
+          console.error("Audio play failed", e);
+      }
+  };
+
   // Initialize Player ID
   useEffect(() => {
     let storedId = localStorage.getItem("checkers_player_id");
@@ -33,9 +58,20 @@ function App() {
     const interval = setInterval(async () => {
       try {
         const updatedGame = await getGame(game.id);
-        if (JSON.stringify(updatedGame.board) !== JSON.stringify(game.board) || 
-            updatedGame.current_turn !== game.current_turn ||
-            updatedGame.black_player_id !== game.black_player_id) {
+        
+        const stateChanged = JSON.stringify(updatedGame.board) !== JSON.stringify(game.board) || 
+                             updatedGame.current_turn !== game.current_turn ||
+                             updatedGame.black_player_id !== game.black_player_id;
+
+        if (stateChanged) {
+          // Check if turn changed to ME
+          const myColor = updatedGame.red_player_id === playerId ? "red" : 
+                          updatedGame.black_player_id === playerId ? "black" : null;
+          
+          if (myColor && updatedGame.current_turn === myColor && game.current_turn !== myColor) {
+              playTurnSound();
+          }
+
           setGame(updatedGame);
         }
       } catch (err) {
@@ -196,9 +232,11 @@ function App() {
 
   // Prepare Render Board (Flip if Red)
   let renderBoard = game.board;
+  // Deep copy for rendering logic
+  let displayBoard = [...renderBoard.map(r => [...r])]; 
+  
   if (myColor === "red") {
-      // Deep copy and reverse rows and cols
-      renderBoard = [...game.board].reverse().map(row => [...row].reverse());
+      displayBoard = displayBoard.reverse().map(row => row.reverse());
   }
 
   return (
@@ -235,12 +273,11 @@ function App() {
         </div>
         
         <div className="flex flex-col items-center">
-            <div className={clsx("text-xs font-bold uppercase tracking-widest mb-1", isMyTurn ? "text-green-400 animate-pulse" : "text-stone-600")}>
+            <div className={clsx("text-xs font-bold uppercase tracking-widest mb-1 transition-colors duration-500", isMyTurn ? "text-green-400 animate-pulse" : "text-stone-600")}>
                 {isMyTurn ? "YOUR TURN" : "OPPONENT'S TURN"}
             </div>
-            <div className="w-16 h-1 bg-stone-800 rounded-full overflow-hidden">
-                <div className={clsx("h-full transition-all duration-500", isMyTurn ? "bg-green-500 w-full" : "bg-stone-700 w-0")} />
-            </div>
+            {/* Visual Flash Bar */}
+            <div className={clsx("w-24 h-2 rounded-full overflow-hidden transition-all duration-500 shadow-lg", isMyTurn ? "bg-green-500 shadow-green-500/50" : "bg-stone-800")}></div>
         </div>
 
         <div className={clsx("px-6 py-3 rounded-lg transition-all duration-300 border-2", 
@@ -252,9 +289,9 @@ function App() {
       </div>
 
       {game.winner && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-bounce">
-                <h2 className="text-6xl font-black text-amber-400 mb-4">{game.winner.toUpperCase()} WINS!</h2>
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-opacity duration-1000">
+            <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-fade-in-up">
+                <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">{game.winner.toUpperCase()} WINS!</h2>
                 <button 
                     onClick={() => setGame(null)}
                     className="mt-6 px-8 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors"
@@ -274,7 +311,7 @@ function App() {
       {/* Board Container */}
       <div className={clsx("relative p-3 bg-stone-700 rounded-lg shadow-2xl transition-opacity duration-300", !isMyTurn && "opacity-90")}>
           <div 
-            className="grid grid-cols-8 gap-0 border-4 border-stone-800 bg-stone-800" 
+            className="grid grid-cols-8 gap-0 border-4 border-[#5c4033] bg-[#5c4033]" 
             style={{ 
                 width: "min(80vh, 80vw)", 
                 height: "min(80vh, 80vw)",
@@ -282,9 +319,9 @@ function App() {
                 maxWidth: "600px"
             }}
           >
-            {renderBoard.map((row, rIndex) => (
+            {displayBoard.map((row, rIndex) => (
             row.map((cell, cIndex) => {
-                // Determine logic coords for isSelected check
+                // Determine logic coords for isSelected/LastMove check
                 let logicRow = rIndex;
                 let logicCol = cIndex;
                 if (myColor === "red") {
@@ -292,6 +329,10 @@ function App() {
                     logicCol = 7 - cIndex;
                 }
                 
+                // Check Last Move
+                const isLastMoveSource = game.last_move?.start_row === logicRow && game.last_move?.start_col === logicCol;
+                const isLastMoveDest = game.last_move?.end_row === logicRow && game.last_move?.end_col === logicCol;
+
                 return (
                 <div key={`${rIndex}-${cIndex}`} className="w-full h-full">
                     <Square
@@ -299,6 +340,8 @@ function App() {
                     col={cIndex}
                     piece={cell}
                     isSelected={selectedSquare?.[0] === logicRow && selectedSquare?.[1] === logicCol}
+                    isLastMoveSource={isLastMoveSource}
+                    isLastMoveDest={isLastMoveDest}
                     isValidTarget={false} 
                     onClick={() => handleSquareClick(rIndex, cIndex)}
                     />
