@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from sqlalchemy.orm.attributes import flag_modified
 from typing import List
 import os
@@ -14,8 +15,19 @@ from schemas import GameState, Move, CreateGameRequest, JoinGameRequest
 import logic
 from fastapi import Request
 from rate_limiter import limiter
+from telemetry import (
+    setup_telemetry, 
+    setup_db_telemetry, 
+    GAMES_CREATED, 
+    GAMES_ACTIVE, 
+    MOVES_MADE
+)
 
 app = FastAPI(title="Checkers API")
+
+# Setup Telemetry
+setup_telemetry(app)
+setup_db_telemetry(engine)
 
 # Enable CORS
 app.add_middleware(
@@ -43,8 +55,19 @@ async def check_query_limit(request: Request):
 
 @app.on_event("startup")
 async def startup():
+    # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+    # Initialize active games count
+    async with engine.connect() as conn:
+        # We need to query active games. 
+        # Note: In raw SQL with asyncpg, we might need text() or similar if ORM isn't fully configured for raw selection without session.
+        # But we can use execute with Core select.
+        stmt = select(func.count(Game.id)).where(Game.status == "active")
+        result = await conn.execute(stmt)
+        active_count = result.scalar() or 0
+        GAMES_ACTIVE.set(active_count)
 
 @app.post("/games", response_model=GameState, status_code=status.HTTP_201_CREATED, dependencies=[Depends(check_create_limit)])
 async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get_db)):
@@ -63,6 +86,11 @@ async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get
     db.add(new_game)
     await db.commit()
     await db.refresh(new_game)
+    
+    # Telemetry
+    GAMES_CREATED.inc()
+    GAMES_ACTIVE.inc()
+    
     return format_game_response(new_game)
 
 @app.post("/games/{game_id}/join", response_model=GameState, dependencies=[Depends(check_query_limit)])
@@ -135,6 +163,8 @@ async def make_move(game_id: str, move: Move, db: AsyncSession = Depends(get_db)
     # Apply move
     new_board, turn_finished, next_active_piece = logic.apply_move(game.board_state, move)
     
+    MOVES_MADE.inc()
+    
     game.board_state = list(new_board)
     flag_modified(game, "board_state")
     
@@ -161,6 +191,7 @@ async def make_move(game_id: str, move: Move, db: AsyncSession = Depends(get_db)
     if winner:
         game.status = "finished"
         game.winner = winner
+        GAMES_ACTIVE.dec()
         
     await db.commit()
     await db.refresh(game)
