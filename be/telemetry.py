@@ -1,6 +1,6 @@
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -36,24 +36,6 @@ DB_LATENCY = Histogram(
     buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.5, 1.0, 5.0]
 )
 
-# --- Custom HTTP Metrics ---
-HTTP_REQUEST_SIZE = Histogram(
-    "http_request_size_bytes",
-    "Content-Length of HTTP requests",
-    buckets=[100, 500, 1000, 5000, 10000, 50000, 100000]
-)
-
-HTTP_RESPONSE_SIZE = Histogram(
-    "http_response_size_bytes",
-    "Content-Length of HTTP responses",
-    buckets=[100, 500, 1000, 5000, 10000, 50000, 100000]
-)
-
-CONCURRENT_REQUESTS = Gauge(
-    "http_concurrent_requests",
-    "Number of concurrent HTTP requests"
-)
-
 def setup_telemetry(app: FastAPI):
     # Initialize Instrumentator
     # We DO NOT use expose(app) anymore as we want a separate port
@@ -64,6 +46,7 @@ def setup_telemetry(app: FastAPI):
     )
     
     # Add default metrics (latency, requests, etc.)
+    instrumentator.add(metrics.default())
     instrumentator.instrument(app)
     
     # Start Prometheus Metrics Server on separate port (9091 by default)
@@ -74,33 +57,6 @@ def setup_telemetry(app: FastAPI):
         print(f"Metrics server started on port {metrics_port}")
     except Exception as e:
         print(f"Failed to start metrics server on port {metrics_port}: {e}")
-    
-    # Add concurrent requests middleware
-    @app.middleware("http")
-    async def track_concurrency(request: Request, call_next):
-        CONCURRENT_REQUESTS.inc()
-        try:
-            # Track request size
-            content_length = request.headers.get("content-length")
-            if content_length:
-                try:
-                    HTTP_REQUEST_SIZE.observe(float(content_length))
-                except ValueError:
-                    pass
-            
-            response = await call_next(request)
-            
-            # Track response size
-            response_content_length = response.headers.get("content-length")
-            if response_content_length:
-                 try:
-                    HTTP_RESPONSE_SIZE.observe(float(response_content_length))
-                 except ValueError:
-                    pass
-            
-            return response
-        finally:
-            CONCURRENT_REQUESTS.dec()
 
 def setup_db_telemetry(engine):
     # If using async engine, event listeners must attach to the sync_engine
