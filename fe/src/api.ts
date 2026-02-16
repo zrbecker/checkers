@@ -1,7 +1,7 @@
 import axios from "axios";
 import type { GameState, Move } from "./types";
 
-const API_URL = "http://localhost:8000";
+const API_URL = import.meta.env.PROD ? "" : "http://localhost:8000";
 
 export const createGame = async (playerId: string, playerName: string): Promise<GameState> => {
   const response = await axios.post(`${API_URL}/games`, { player_id: playerId, player_name: playerName });
