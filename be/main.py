@@ -44,7 +44,7 @@ async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get
     return format_game_response(new_game)
 
 @app.post("/games/{game_id}/join", response_model=GameState)
-async def join_game(game_id: int, request: JoinGameRequest, db: AsyncSession = Depends(get_db)):
+async def join_game(game_id: str, request: JoinGameRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Game).where(Game.id == game_id))
     game = result.scalars().first()
     if not game:
@@ -73,7 +73,7 @@ async def join_game(game_id: int, request: JoinGameRequest, db: AsyncSession = D
     raise HTTPException(status_code=400, detail="Game is full")
 
 @app.get("/games/{game_id}", response_model=GameState)
-async def get_game(game_id: int, db: AsyncSession = Depends(get_db)):
+async def get_game(game_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Game).where(Game.id == game_id))
     game = result.scalars().first()
     if not game:
@@ -81,7 +81,7 @@ async def get_game(game_id: int, db: AsyncSession = Depends(get_db)):
     return format_game_response(game)
 
 @app.post("/games/{game_id}/move", response_model=GameState)
-async def make_move(game_id: int, move: Move, db: AsyncSession = Depends(get_db)):
+async def make_move(game_id: str, move: Move, db: AsyncSession = Depends(get_db)):
     # Fetch game
     result = await db.execute(select(Game).where(Game.id == game_id))
     game = result.scalars().first()
@@ -145,7 +145,7 @@ async def make_move(game_id: int, move: Move, db: AsyncSession = Depends(get_db)
 
 def format_game_response(game: Game) -> GameState:
     return GameState(
-        id=game.id,
+        id=str(game.id),
         board=game.board_state,
         current_turn=game.current_turn,
         status=game.status,

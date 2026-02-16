@@ -16,7 +16,7 @@ class JoinGameRequest(BaseModel):
 
 
 class GameState(BaseModel):
-    id: int
+    id: str
     board: List[List[Optional[str]]]  # 8x8 grid: "r", "b", "R", "B", None
     current_turn: str
     status: str

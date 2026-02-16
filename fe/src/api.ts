@@ -8,17 +8,17 @@ export const createGame = async (playerId: string): Promise<GameState> => {
   return response.data;
 };
 
-export const joinGame = async (gameId: number, playerId: string): Promise<GameState> => {
+export const joinGame = async (gameId: string, playerId: string): Promise<GameState> => {
   const response = await axios.post(`${API_URL}/games/${gameId}/join`, { player_id: playerId });
   return response.data;
 };
 
-export const getGame = async (gameId: number): Promise<GameState> => {
+export const getGame = async (gameId: string): Promise<GameState> => {
   const response = await axios.get(`${API_URL}/games/${gameId}`);
   return response.data;
 };
 
-export const makeMove = async (gameId: number, move: Move & { player_id: string }): Promise<GameState> => {
+export const makeMove = async (gameId: string, move: Move & { player_id: string }): Promise<GameState> => {
   const response = await axios.post(`${API_URL}/games/${gameId}/move`, move);
   return response.data;
 };

@@ -1,5 +1,5 @@
 export interface GameState {
-  id: number;
+  id: string;
   board: (string | null)[][];
   current_turn: "red" | "black";
   status: "active" | "finished";

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { createGame, getGame, makeMove, joinGame } from "./api";
 import type { GameState } from "./types";
 import { Square } from "./components/Square";
@@ -7,18 +8,20 @@ import clsx from "clsx";
 const POLLING_INTERVAL = 2000;
 
 function App() {
+  const { gameId } = useParams();
+  const navigate = useNavigate();
+
   const [game, setGame] = useState<GameState | null>(null);
   const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
   // Lobby State
-  const [joinGameId, setJoinGameId] = useState("");
+  const [joinInputId, setJoinInputId] = useState("");
   const [playerId, setPlayerId] = useState<string>("");
 
   // Sound Effect
   const playTurnSound = () => {
-      // Simple Beep using Web Audio API to avoid external assets
       try {
           const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
           const oscillator = audioCtx.createOscillator();
@@ -50,6 +53,37 @@ function App() {
     }
     setPlayerId(storedId);
   }, []);
+
+  // Handle Routing / Game Joining
+  useEffect(() => {
+      if (gameId && playerId) {
+          // If URL has ID but we haven't loaded it yet (or loaded a different one)
+          if (!game || game.id !== gameId) {
+              const fetchGame = async () => {
+                  setLoading(true);
+                  try {
+                      // Attempt to join/rejoin
+                      const joinedGame = await joinGame(gameId, playerId);
+                      setGame(joinedGame);
+                      setError(null);
+                  } catch (err: any) {
+                      console.error(err);
+                      setError(err.response?.data?.detail || "Failed to join game");
+                      // Optionally navigate back to lobby if 404
+                      if (err.response?.status === 404) {
+                          navigate("/");
+                      }
+                  } finally {
+                      setLoading(false);
+                  }
+              };
+              fetchGame();
+          }
+      } else if (!gameId && game) {
+          // URL is root but we have game state -> Clear it (user went back)
+          setGame(null);
+      }
+  }, [gameId, playerId]); // Dependency on gameId handles URL changes
 
   // Polling for updates
   useEffect(() => {
@@ -88,6 +122,7 @@ function App() {
           const newGame = await createGame(playerId);
           setGame(newGame);
           setError(null);
+          navigate(`/game/${newGame.id}`);
       } catch (err) {
           console.error(err);
           setError("Failed to create game");
@@ -96,19 +131,14 @@ function App() {
       }
   };
 
-  const handleJoinGame = async () => {
-      if (!joinGameId) return;
-      setLoading(true);
-      try {
-          const joinedGame = await joinGame(parseInt(joinGameId), playerId);
-          setGame(joinedGame);
-          setError(null);
-      } catch (err: any) {
-          console.error(err);
-          setError(err.response?.data?.detail || "Failed to join game");
-      } finally {
-          setLoading(false);
-      }
+  const handleManualJoin = () => {
+      if (!joinInputId) return;
+      navigate(`/game/${joinInputId}`);
+  };
+
+  const handleBackToLobby = () => {
+      setGame(null);
+      navigate("/");
   };
 
   const myColor = game ? (game.red_player_id === playerId ? "red" : 
@@ -174,7 +204,7 @@ function App() {
   if (loading) return <div className="flex justify-center items-center h-screen bg-stone-900 text-white">Loading...</div>;
 
   // LOBBY VIEW
-  if (!game) {
+  if (!gameId) {
       return (
         <div className="min-h-screen bg-stone-900 text-stone-100 flex flex-col items-center justify-center p-4 font-sans">
             <h1 className="text-6xl font-black mb-12 text-amber-500 tracking-wider drop-shadow-lg">CHECKERS</h1>
@@ -202,15 +232,15 @@ function App() {
                     <label className="block text-stone-300 text-sm font-bold mb-2">Join Existing Game</label>
                     <div className="flex gap-2">
                         <input 
-                            type="number" 
+                            type="text" 
                             placeholder="Game ID"
-                            value={joinGameId}
-                            onChange={(e) => setJoinGameId(e.target.value)}
+                            value={joinInputId}
+                            onChange={(e) => setJoinInputId(e.target.value)}
                             className="flex-1 bg-stone-900 border border-stone-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors"
                         />
                         <button 
-                            onClick={handleJoinGame}
-                            disabled={!joinGameId}
+                            onClick={handleManualJoin}
+                            disabled={!joinInputId}
                             className="px-6 bg-stone-700 hover:bg-stone-600 disabled:opacity-50 text-white font-bold rounded-lg transition-colors"
                         >
                             Join
@@ -224,6 +254,22 @@ function App() {
                     </div>
                 )}
             </div>
+        </div>
+      );
+  }
+
+  // If gameId is present but game not loaded (and not loading), show nothing or error
+  if (!game) {
+      return (
+        <div className="min-h-screen bg-stone-900 text-white flex flex-col items-center justify-center">
+            {error ? (
+                <div className="text-center">
+                    <div className="text-2xl text-red-400 mb-4">Error: {error}</div>
+                    <button onClick={() => navigate("/")} className="text-blue-400 hover:underline">Return to Lobby</button>
+                </div>
+            ) : (
+                <div>Connecting to game...</div>
+            )}
         </div>
       );
   }
@@ -246,8 +292,8 @@ function App() {
       <div className="mb-6 w-full max-w-lg flex flex-col items-center gap-4">
         
         {/* Game ID Badge */}
-        <div className="bg-stone-800 px-4 py-1 rounded-full text-stone-400 font-mono text-xs border border-stone-700">
-            Game ID: <span className="text-amber-500 font-bold text-base">{game.id}</span>
+        <div className="bg-stone-800 px-4 py-1 rounded-full text-stone-400 font-mono text-xs border border-stone-700 max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+            Game ID: <span className="text-amber-500 font-bold text-xs">{game.id}</span>
         </div>
 
         {/* Player Status */}
@@ -293,7 +339,7 @@ function App() {
             <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-fade-in-up">
                 <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">{game.winner.toUpperCase()} WINS!</h2>
                 <button 
-                    onClick={() => setGame(null)}
+                    onClick={handleBackToLobby}
                     className="mt-6 px-8 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors"
                 >
                     Back to Lobby
@@ -355,9 +401,19 @@ function App() {
           {!game.black_player_id && (
               <div className="absolute inset-0 z-40 bg-black/60 flex flex-col items-center justify-center text-center p-6 backdrop-blur-sm rounded-lg">
                   <div className="text-3xl font-bold text-white mb-2">Waiting for Opponent...</div>
-                  <div className="text-stone-300 mb-6">Share this Game ID with a friend:</div>
-                  <div className="bg-stone-800 text-amber-500 text-4xl font-mono font-bold px-6 py-4 rounded-lg border-2 border-amber-500/50 shadow-lg select-all">
-                      {game.id}
+                  <div className="text-stone-300 mb-6">Share this link with a friend:</div>
+                  
+                  <div className="flex gap-2 max-w-full">
+                    <div className="bg-stone-800 text-amber-500 text-lg font-mono font-bold px-4 py-3 rounded-lg border-2 border-amber-500/50 shadow-lg select-all overflow-x-auto whitespace-nowrap max-w-[50vw]">
+                        {window.location.href}
+                    </div>
+                    <button 
+                        onClick={() => navigator.clipboard.writeText(window.location.href)}
+                        className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg font-bold transition-colors"
+                        title="Copy Link"
+                    >
+                        Copy
+                    </button>
                   </div>
               </div>
           )}
