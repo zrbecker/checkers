@@ -12,6 +12,8 @@ from database import engine, get_db, Base
 from models import Game
 from schemas import GameState, Move, CreateGameRequest, JoinGameRequest
 import logic
+from fastapi import Request
+from rate_limiter import limiter
 
 app = FastAPI(title="Checkers API")
 
@@ -24,12 +26,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def check_create_limit(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not limiter.check_game_create(ip):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded. Try again later.")
+
+async def check_move_limit(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not limiter.check_move(ip):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded. Try again later.")
+
+async def check_query_limit(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not limiter.check_query(ip):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded. Try again later.")
+
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-@app.post("/games", response_model=GameState, status_code=status.HTTP_201_CREATED)
+@app.post("/games", response_model=GameState, status_code=status.HTTP_201_CREATED, dependencies=[Depends(check_create_limit)])
 async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get_db)):
     initial_board = logic.initialize_board()
     new_game = Game(
@@ -48,7 +65,7 @@ async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get
     await db.refresh(new_game)
     return format_game_response(new_game)
 
-@app.post("/games/{game_id}/join", response_model=GameState)
+@app.post("/games/{game_id}/join", response_model=GameState, dependencies=[Depends(check_query_limit)])
 async def join_game(game_id: str, request: JoinGameRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Game).where(Game.id == game_id))
     game = result.scalars().first()
@@ -78,7 +95,7 @@ async def join_game(game_id: str, request: JoinGameRequest, db: AsyncSession = D
         
     raise HTTPException(status_code=400, detail="Game is full")
 
-@app.get("/games/{game_id}", response_model=GameState)
+@app.get("/games/{game_id}", response_model=GameState, dependencies=[Depends(check_query_limit)])
 async def get_game(game_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Game).where(Game.id == game_id))
     game = result.scalars().first()
@@ -86,7 +103,7 @@ async def get_game(game_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Game not found")
     return format_game_response(game)
 
-@app.post("/games/{game_id}/move", response_model=GameState)
+@app.post("/games/{game_id}/move", response_model=GameState, dependencies=[Depends(check_move_limit)])
 async def make_move(game_id: str, move: Move, db: AsyncSession = Depends(get_db)):
     # Fetch game
     result = await db.execute(select(Game).where(Game.id == game_id))
