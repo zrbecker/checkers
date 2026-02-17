@@ -31,7 +31,7 @@ const PlayerControls = ({
     // 2. Online Mode AND I am this color
     // Use playerName just to silence unused var warning if needed, or remove it from props if truly unused
     // Actually let's use it for the confirmation dialog
-    const isVisible = (game.mode as string) === "local" || (game.mode !== "local" && myColor === targetColor);
+    const isVisible = game.mode === "local" || myColor === targetColor;
     
     if (!isVisible || game.status !== "active") return null;
 
