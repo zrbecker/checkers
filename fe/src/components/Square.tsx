@@ -29,7 +29,7 @@ export const Square: React.FC<SquareProps> = ({
     <div
       onClick={onClick}
       className={clsx(
-        "w-full h-full flex items-center justify-center relative cursor-pointer transition-colors duration-200",
+        "w-full h-full flex items-center justify-center relative cursor-pointer transition-colors duration-200 overflow-hidden",
         isDark ? "bg-[#5c4033] hover:bg-[#6d4c3d]" : "bg-[#d2b48c] hover:bg-[#e6c9a3]", // Classic Wood Colors
         isSelected && "ring-inset ring-4 ring-yellow-400 bg-amber-900",
         (isLastMoveSource || isLastMoveDest) && "bg-yellow-500/40", // Highlight Last Move

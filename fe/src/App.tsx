@@ -578,7 +578,7 @@ function App() {
   const isMyTurn = game.current_turn === myColor;
 
   // Prepare Render Board (Flip if Red)
-  let renderBoard = game.board;
+  const renderBoard = game.board;
   let displayBoard = [...renderBoard.map(r => [...r])]; 
   
   if (viewPerspective === "red") {
@@ -655,6 +655,7 @@ function App() {
           <div className={clsx("relative p-3 bg-stone-700 shadow-2xl transition-opacity duration-300 w-full aspect-square", !isMyTurn && "opacity-95")}>
               <div 
                 className="grid grid-cols-8 gap-0 border-4 border-[#5c4033] bg-[#5c4033] w-full h-full" 
+                style={{ gridTemplateRows: "repeat(8, minmax(0, 1fr))" }}
               >
                 {displayBoard.map((row, rIndex) => (
                 row.map((cell, cIndex) => {
