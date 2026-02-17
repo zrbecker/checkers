@@ -20,6 +20,7 @@ function App() {
   const [joinInputId, setJoinInputId] = useState("");
   const [playerId, setPlayerId] = useState<string>("");
   const [playerName, setPlayerName] = useState<string>("");
+  const [player2Name, setPlayer2Name] = useState<string>("");
   const [selectedMode, setSelectedMode] = useState<"online" | "cpu" | "local">("online");
 
   // Sound Effect
@@ -161,10 +162,10 @@ function App() {
       
       setLoading(true);
       try {
-          const newGame = await createGame(playerId, playerName, selectedMode);
-          setGame(newGame);
-          setError(null);
-          navigate(`/game/${newGame.id}`);
+      const newGame = await createGame(playerId, playerName, selectedMode, player2Name);
+      setGame(newGame);
+      setError(null);
+      navigate(`/game/${newGame.id}`);
       } catch (err: any) {
           console.error(err);
           setError(err.response?.data?.detail?.[0]?.msg || "Failed to create game");
@@ -337,6 +338,19 @@ function App() {
                         className="w-full bg-stone-900 border border-stone-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors"
                     />
                 </div>
+
+                {selectedMode === "local" && (
+                    <div>
+                        <label className="block text-stone-300 text-sm font-bold mb-2">Player 2 Name</label>
+                        <input 
+                            type="text" 
+                            placeholder="Enter opponent's name"
+                            value={player2Name}
+                            onChange={(e) => setPlayer2Name(e.target.value)}
+                            className="w-full bg-stone-900 border border-stone-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-colors"
+                        />
+                    </div>
+                )}
 
                 <div className="border-t border-stone-600 my-4"></div>
 

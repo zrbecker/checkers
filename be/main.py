@@ -81,7 +81,7 @@ async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get
         black_player_name = "Computer"
     elif request.mode == "local":
         black_player_id = request.player_id
-        black_player_name = "Player 2"
+        black_player_name = request.player2_name if request.player2_name else "Player 2"
     
     new_game = Game(
         board_state=initial_board,

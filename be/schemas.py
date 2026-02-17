@@ -31,6 +31,7 @@ class CreateGameRequest(BaseModel):
     player_id: str
     player_name: str
     mode: str = "online" # "online", "cpu", "local"
+    player2_name: Optional[str] = None
     
     @field_validator('player_name')
     def name_must_be_valid(cls, v):
