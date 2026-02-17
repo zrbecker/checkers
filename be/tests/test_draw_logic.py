@@ -155,3 +155,32 @@ def test_local_mode_resignation(mock_get_db_dep, mock_flag_modified, mock_game):
     assert res.status_code == 200
     assert mock_game.status == "finished"
     assert mock_game.winner == "red" # Black resigned, Red wins
+
+def test_draw_offer_endpoints(mock_game):
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_game
+    mock_db.execute.return_value = mock_result
+    app.dependency_overrides[get_db] = lambda: mock_db
+    
+    mock_game.mode = "online"
+    mock_game.red_player_id = "p1"
+    mock_game.black_player_id = "p2"
+    mock_game.draw_offer = None
+    
+    # 1. Offer Draw (Red)
+    client.post("/games/test-game/draw/offer", json={"player_id": "p1"})
+    assert mock_game.draw_offer == "red"
+    
+    # 2. Reject Draw (Black)
+    client.post("/games/test-game/draw/reject", json={"player_id": "p2"})
+    assert mock_game.draw_offer == None
+    
+    # 3. Offer Draw Again (Black)
+    client.post("/games/test-game/draw/offer", json={"player_id": "p2"})
+    assert mock_game.draw_offer == "black"
+    
+    # 4. Accept Draw (Red)
+    client.post("/games/test-game/draw/accept", json={"player_id": "p1"})
+    assert mock_game.status == "finished"
+    assert mock_game.winner == "draw"
