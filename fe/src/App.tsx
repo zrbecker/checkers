@@ -345,7 +345,9 @@ function App() {
   let myColor: "red" | "black" | "spectator" | null = null;
   if (game) {
       if (game.mode === "local" && game.red_player_id === playerId) {
-          // In local mode, if I own the game, I control whoever's turn it is
+          // In local mode, myColor tracks turn for interaction, 
+          // BUT for visual layout we want a fixed perspective (Red at bottom)
+          // We will decouple "myColor" (identity) from "viewPerspective" (layout)
           myColor = game.current_turn;
       } else {
           if (game.red_player_id === playerId) myColor = "red";
@@ -354,13 +356,18 @@ function App() {
       }
   }
 
+  // Visual Perspective: Who is at the bottom?
+  // Local: Red is always bottom.
+  // Online: Me (if playing), or Red (if spectator).
+  const viewPerspective = (game?.mode === "local") ? "red" : (myColor === "spectator" ? "red" : myColor);
+
   const handleSquareClick = async (visualRow: number, visualCol: number) => {
     if (!game || !myColor) return;
 
     // Transform Visual -> Logic
     let row = visualRow;
     let col = visualCol;
-    if (myColor === "red" && game.mode !== "local") {
+    if (viewPerspective === "red") {
         row = 7 - visualRow;
         col = 7 - visualCol;
     }
@@ -406,6 +413,16 @@ function App() {
         setError(err.response?.data?.detail || "Invalid move");
       }
     }
+  };
+
+  const handleResign = async () => {
+      if (!game || !window.confirm("Are you sure you want to resign? You will lose the game.")) return;
+      try {
+          const updatedGame = await resignGame(game.id, playerId);
+          setGame(updatedGame);
+      } catch (err: any) {
+          setError(err.response?.data?.detail || "Failed to resign");
+      }
   };
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-stone-900 text-white">Loading...</div>;
@@ -573,7 +590,7 @@ function App() {
   let renderBoard = game.board;
   let displayBoard = [...renderBoard.map(r => [...r])]; 
   
-  if (myColor === "red" && game.mode !== "local") {
+  if (viewPerspective === "red") {
       displayBoard = displayBoard.reverse().map(row => row.reverse());
   }
 
@@ -583,18 +600,18 @@ function App() {
   let topPlayerColor = "spectator";
   let bottomPlayerColor = "spectator";
 
-  if (myColor === "red") {
-      bottomPlayerName = game.red_player_name || "You (Red)";
+  if (viewPerspective === "red") {
+      bottomPlayerName = game.red_player_name || "Red";
       bottomPlayerColor = "red";
-      topPlayerName = game.black_player_name || "Waiting for Black...";
+      topPlayerName = game.black_player_name || "Black";
       topPlayerColor = "black";
-  } else if (myColor === "black") {
-      bottomPlayerName = game.black_player_name || "You (Black)";
+  } else if (viewPerspective === "black") {
+      bottomPlayerName = game.black_player_name || "Black";
       bottomPlayerColor = "black";
-      topPlayerName = game.red_player_name || "Waiting for Red...";
+      topPlayerName = game.red_player_name || "Red";
       topPlayerColor = "red";
   } else {
-      // Spectator View (Standard: Red Top, Black Bottom)
+      // Fallback/Spectator (should be covered by viewPerspective logic)
       topPlayerName = game.red_player_name || "Red";
       topPlayerColor = "red";
       bottomPlayerName = game.black_player_name || "Black";
@@ -653,7 +670,7 @@ function App() {
                     // Determine logic coords for isSelected/LastMove check
                     let logicRow = rIndex;
                     let logicCol = cIndex;
-                    if (myColor === "red" && game.mode !== "local") {
+                    if (viewPerspective === "red") {
                         logicRow = 7 - rIndex;
                         logicCol = 7 - cIndex;
                     }
