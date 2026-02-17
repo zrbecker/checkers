@@ -30,9 +30,20 @@ else:
 config.set_main_option("sqlalchemy.url", final_url)
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Debug: Print DB URL (masked)
+masked_url = final_url
+if ":" in final_url and "@" in final_url:
+    try:
+        # Simple mask
+        prefix = final_url.split("://")[0]
+        suffix = final_url.split("@")[1]
+        masked_url = f"{prefix}://****:****@{suffix}"
+    except:
+        pass
+print(f"Alembic using database URL: {masked_url}")
 
 # add your model's MetaData object here
 # for 'autogenerate' support
