@@ -13,7 +13,8 @@ const PlayerControls = ({
     myColor, 
     playerId, 
     targetColor, 
-    playerName 
+    playerName,
+    onGameUpdate 
 }: { 
     game: GameState, 
     myColor: string | null, 
@@ -401,46 +402,6 @@ function App() {
         setError(err.response?.data?.detail || "Invalid move");
       }
     }
-  };
-
-  const handleResign = async () => {
-      if (!game || !window.confirm("Are you sure you want to resign? You will lose the game.")) return;
-      try {
-          const updatedGame = await resignGame(game.id, playerId);
-          setGame(updatedGame);
-      } catch (err: any) {
-          setError(err.response?.data?.detail || "Failed to resign");
-      }
-  };
-
-  const handleOfferDraw = async () => {
-      if (!game) return;
-      try {
-          const updatedGame = await offerDraw(game.id, playerId);
-          setGame(updatedGame);
-      } catch (err: any) {
-          setError(err.response?.data?.detail || "Failed to offer draw");
-      }
-  };
-
-  const handleAcceptDraw = async () => {
-      if (!game) return;
-      try {
-          const updatedGame = await acceptDraw(game.id, playerId);
-          setGame(updatedGame);
-      } catch (err: any) {
-          setError(err.response?.data?.detail || "Failed to accept draw");
-      }
-  };
-
-  const handleRejectDraw = async () => {
-      if (!game) return;
-      try {
-          const updatedGame = await rejectDraw(game.id, playerId);
-          setGame(updatedGame);
-      } catch (err: any) {
-          setError(err.response?.data?.detail || "Failed to reject draw");
-      }
   };
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-stone-900 text-white">Loading...</div>;
