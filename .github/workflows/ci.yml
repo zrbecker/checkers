@@ -28,9 +28,10 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    # Add linting or tests here if available
-    # - name: Lint with Ruff
-    #   run: ruff check .
+    - name: Run Tests
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        pytest
 
   frontend:
     name: Frontend Checks (React)

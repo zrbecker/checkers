@@ -34,8 +34,7 @@ def mock_game():
     return game
 
 @patch("main.flag_modified")
-@patch("main.get_db")
-def test_pawn_move_resets_timer(mock_get_db_dep, mock_flag_modified, mock_game):
+def test_pawn_move_resets_timer(mock_flag_modified, mock_game):
     # Setup Mock DB Session
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -63,8 +62,7 @@ def test_pawn_move_resets_timer(mock_get_db_dep, mock_flag_modified, mock_game):
     assert mock_game.draw_timer == 0
 
 @patch("main.flag_modified")
-@patch("main.get_db")
-def test_king_move_increments_timer(mock_get_db_dep, mock_flag_modified, mock_game):
+def test_king_move_increments_timer(mock_flag_modified, mock_game):
     # Setup Mock DB
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -92,8 +90,7 @@ def test_king_move_increments_timer(mock_get_db_dep, mock_flag_modified, mock_ga
     assert mock_game.draw_timer == 51
 
 @patch("main.flag_modified")
-@patch("main.get_db")
-def test_draw_condition_reached(mock_get_db_dep, mock_flag_modified, mock_game):
+def test_draw_condition_reached(mock_flag_modified, mock_game):
     mock_db = AsyncMock()
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_game
@@ -119,3 +116,42 @@ def test_draw_condition_reached(mock_get_db_dep, mock_flag_modified, mock_game):
     assert mock_game.draw_timer == 100
     assert mock_game.status == "finished"
     assert mock_game.winner == "draw"
+
+@patch("main.flag_modified")
+@patch("main.get_db")
+def test_local_mode_resignation(mock_get_db_dep, mock_flag_modified, mock_game):
+    # Setup Mock DB Session
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_game
+    mock_db.execute.return_value = mock_result
+    
+    app.dependency_overrides[get_db] = lambda: mock_db
+    
+    # Setup local game state
+    mock_game.mode = "local"
+    mock_game.red_player_id = "p1"
+    mock_game.black_player_id = "p1_2"
+    
+    # Resign as Black (Player 2)
+    payload = {"player_id": "p1_2"}
+    
+    # DEBUG: Call move endpoint to verify DB override
+    move_payload = {
+        "start_row": 2, "start_col": 1,
+        "end_row": 3, "end_col": 0,
+        "player_id": "p1"
+    }
+    with patch("logic.is_valid_move", return_value=True):
+        res_move = client.post("/games/test-game/move", json=move_payload)
+    print(f"Move endpoint status: {res_move.status_code}")
+    if res_move.status_code != 200:
+        print(f"Move endpoint response: {res_move.json()}")
+
+    # We are testing the resign endpoint
+    res = client.post("/games/test-game/resign", json=payload)
+    print(f"Resign endpoint response: {res.json()}")
+    
+    assert res.status_code == 200
+    assert mock_game.status == "finished"
+    assert mock_game.winner == "red" # Black resigned, Red wins
