@@ -27,3 +27,23 @@ export const makeAiMove = async (gameId: string): Promise<GameState> => {
   const response = await axios.post(`${API_URL}/games/${gameId}/ai-move`);
   return response.data;
 };
+
+export const resignGame = async (gameId: string, playerId: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games/${gameId}/resign`, { player_id: playerId });
+  return response.data;
+};
+
+export const offerDraw = async (gameId: string, playerId: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games/${gameId}/draw/offer`, { player_id: playerId });
+  return response.data;
+};
+
+export const acceptDraw = async (gameId: string, playerId: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games/${gameId}/draw/accept`, { player_id: playerId });
+  return response.data;
+};
+
+export const rejectDraw = async (gameId: string, playerId: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games/${gameId}/draw/reject`, { player_id: playerId });
+  return response.data;
+};

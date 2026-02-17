@@ -45,7 +45,8 @@ class JoinGameRequest(BaseModel):
     def name_must_be_valid(cls, v):
         return validate_name(v)
 
-
+class GameActionRequest(BaseModel):
+    player_id: str
 
 class GameState(BaseModel):
     id: str
@@ -60,6 +61,7 @@ class GameState(BaseModel):
     last_move: Optional[dict]
     active_piece: Optional[dict]
     mode: Optional[str] = "online"
+    draw_offer: Optional[str] = None
 
     class Config:
         from_attributes = True

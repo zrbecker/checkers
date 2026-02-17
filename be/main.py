@@ -11,7 +11,7 @@ import os
 
 from database import engine, get_db, Base
 from models import Game
-from schemas import GameState, Move, CreateGameRequest, JoinGameRequest
+from schemas import GameState, Move, CreateGameRequest, JoinGameRequest, GameActionRequest
 import logic
 from fastapi import Request
 from rate_limiter import limiter
@@ -275,6 +275,124 @@ async def make_ai_move(game_id: str, db: AsyncSession = Depends(get_db)):
     await db.refresh(game)
     return format_game_response(game)
 
+@app.post("/games/{game_id}/resign", response_model=GameState, dependencies=[Depends(check_query_limit)])
+async def resign_game(game_id: str, request: GameActionRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalars().first()
+    
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+        
+    if game.status != "active":
+        raise HTTPException(status_code=400, detail="Game is finished")
+
+    # Determine who is resigning
+    winner = None
+    if request.player_id == game.red_player_id:
+        winner = "black"
+    elif request.player_id == game.black_player_id:
+        winner = "red"
+    else:
+        raise HTTPException(status_code=403, detail="Not a player in this game")
+
+    game.status = "finished"
+    game.winner = winner
+    GAMES_ACTIVE.dec()
+    
+    await db.commit()
+    await db.refresh(game)
+    return format_game_response(game)
+
+@app.post("/games/{game_id}/draw/offer", response_model=GameState, dependencies=[Depends(check_query_limit)])
+async def offer_draw(game_id: str, request: GameActionRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalars().first()
+    
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+        
+    if game.status != "active":
+        raise HTTPException(status_code=400, detail="Game is finished")
+
+    player_color = None
+    if request.player_id == game.red_player_id:
+        player_color = "red"
+    elif request.player_id == game.black_player_id:
+        player_color = "black"
+    else:
+        raise HTTPException(status_code=403, detail="Not a player in this game")
+
+    # If already offered by this player, do nothing (or error?) - doing nothing is fine
+    # If offered by opponent, auto-accept? No, explicit accept required by design plan
+    
+    game.draw_offer = player_color
+    await db.commit()
+    await db.refresh(game)
+    return format_game_response(game)
+
+@app.post("/games/{game_id}/draw/accept", response_model=GameState, dependencies=[Depends(check_query_limit)])
+async def accept_draw(game_id: str, request: GameActionRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalars().first()
+    
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+        
+    if game.status != "active":
+        raise HTTPException(status_code=400, detail="Game is finished")
+
+    if not game.draw_offer:
+        raise HTTPException(status_code=400, detail="No draw offered")
+
+    # Verify acceptor is the opponent of the offerer
+    acceptor_color = None
+    if request.player_id == game.red_player_id:
+        acceptor_color = "red"
+    elif request.player_id == game.black_player_id:
+        acceptor_color = "black"
+    else:
+        raise HTTPException(status_code=403, detail="Not a player in this game")
+
+    if game.draw_offer == acceptor_color:
+        raise HTTPException(status_code=400, detail="Cannot accept your own draw offer")
+
+    # Accepted!
+    game.status = "finished"
+    game.winner = "draw"
+    game.draw_offer = None
+    GAMES_ACTIVE.dec()
+    
+    await db.commit()
+    await db.refresh(game)
+    return format_game_response(game)
+
+@app.post("/games/{game_id}/draw/reject", response_model=GameState, dependencies=[Depends(check_query_limit)])
+async def reject_draw(game_id: str, request: GameActionRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalars().first()
+    
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    if not game.draw_offer:
+        # Just return current state if nothing to reject
+        return format_game_response(game)
+
+    # Verify rejector is the opponent (or maybe self-cancel?)
+    # Let's allow either player to cancel the offer (reject or rescind)
+    player_color = None
+    if request.player_id == game.red_player_id:
+        player_color = "red"
+    elif request.player_id == game.black_player_id:
+        player_color = "black"
+    else:
+        raise HTTPException(status_code=403, detail="Not a player in this game")
+
+    game.draw_offer = None
+    await db.commit()
+    await db.refresh(game)
+    return format_game_response(game)
+
 def format_game_response(game: Game) -> GameState:
     return GameState(
         id=str(game.id),
@@ -288,7 +406,8 @@ def format_game_response(game: Game) -> GameState:
         black_player_name=game.black_player_name,
         last_move=game.last_move,
         active_piece=game.active_piece,
-        mode=game.mode
+        mode=game.mode,
+        draw_offer=game.draw_offer
     )
 
 # Serve Frontend

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { createGame, getGame, makeMove, joinGame, makeAiMove } from "./api";
+import { createGame, getGame, makeMove, joinGame, makeAiMove, resignGame, offerDraw, acceptDraw, rejectDraw } from "./api";
 import type { GameState } from "./types";
 import { Square } from "./components/Square";
 import clsx from "clsx";
@@ -266,6 +266,46 @@ function App() {
         setError(err.response?.data?.detail || "Invalid move");
       }
     }
+  };
+
+  const handleResign = async () => {
+      if (!game || !window.confirm("Are you sure you want to resign? You will lose the game.")) return;
+      try {
+          const updatedGame = await resignGame(game.id, playerId);
+          setGame(updatedGame);
+      } catch (err: any) {
+          setError(err.response?.data?.detail || "Failed to resign");
+      }
+  };
+
+  const handleOfferDraw = async () => {
+      if (!game) return;
+      try {
+          const updatedGame = await offerDraw(game.id, playerId);
+          setGame(updatedGame);
+      } catch (err: any) {
+          setError(err.response?.data?.detail || "Failed to offer draw");
+      }
+  };
+
+  const handleAcceptDraw = async () => {
+      if (!game) return;
+      try {
+          const updatedGame = await acceptDraw(game.id, playerId);
+          setGame(updatedGame);
+      } catch (err: any) {
+          setError(err.response?.data?.detail || "Failed to accept draw");
+      }
+  };
+
+  const handleRejectDraw = async () => {
+      if (!game) return;
+      try {
+          const updatedGame = await rejectDraw(game.id, playerId);
+          setGame(updatedGame);
+      } catch (err: any) {
+          setError(err.response?.data?.detail || "Failed to reject draw");
+      }
   };
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-stone-900 text-white">Loading...</div>;
@@ -549,11 +589,19 @@ function App() {
               {game.winner && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-opacity duration-1000">
                     <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-fade-in-up">
-                        <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">{game.winner.toUpperCase()} WINS!</h2>
+                        <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">
+                            {game.winner === "draw" ? "GAME DRAWN!" : `${game.winner.toUpperCase()} WINS!`}
+                        </h2>
                         <div className="text-2xl text-stone-300 mb-8">
-                            Winner: <span className="text-amber-400 font-bold">
-                                {game.winner === "red" ? game.red_player_name : game.black_player_name}
-                            </span>
+                            {game.winner === "draw" ? (
+                                <span className="text-stone-400">By Agreement</span>
+                            ) : (
+                                <>
+                                    Winner: <span className="text-amber-400 font-bold">
+                                        {game.winner === "red" ? game.red_player_name : game.black_player_name}
+                                    </span>
+                                </>
+                            )}
                         </div>
                         <button 
                             onClick={handleBackToLobby}
@@ -587,6 +635,37 @@ function App() {
               )}
           </div>
       
+          {/* Game Controls */}
+          {game.status === "active" && myColor && myColor !== "spectator" && (
+            <div className="mt-4 flex gap-4 justify-center w-full">
+                {/* Draw Logic */}
+                {game.draw_offer ? (
+                    game.draw_offer !== myColor ? (
+                        <>
+                            <button onClick={handleAcceptDraw} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded shadow-lg transition-colors">
+                                Accept Draw
+                            </button>
+                            <button onClick={handleRejectDraw} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded shadow-lg transition-colors">
+                                Reject Draw
+                            </button>
+                        </>
+                    ) : (
+                         <div className="text-stone-400 font-bold py-2 px-4 border border-stone-600 rounded bg-stone-800 cursor-not-allowed">
+                            Draw Offered...
+                        </div>
+                    )
+                ) : (
+                    <button onClick={handleOfferDraw} className="bg-stone-700 hover:bg-stone-600 text-stone-200 font-bold py-2 px-4 rounded border border-stone-600 shadow-lg transition-colors">
+                        Offer Draw
+                    </button>
+                )}
+                
+                <button onClick={handleResign} className="bg-red-900/50 hover:bg-red-800/80 text-red-200 font-bold py-2 px-4 rounded border border-red-800/50 shadow-lg transition-colors">
+                    Resign
+                </button>
+            </div>
+          )}
+
       </div>
 
     </div>

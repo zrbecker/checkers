@@ -3,7 +3,7 @@ export interface GameState {
   board: (string | null)[][];
   current_turn: "red" | "black";
   status: "active" | "finished";
-  winner: "red" | "black" | null;
+  winner: "red" | "black" | "draw" | null;
   red_player_id?: string;
   black_player_id?: string;
   red_player_name?: string;
@@ -19,6 +19,7 @@ export interface GameState {
     col: number;
   };
   mode?: "online" | "cpu" | "local";
+  draw_offer?: "red" | "black" | null;
 }
 
 export interface Move {
