@@ -117,6 +117,21 @@ def get_valid_moves(board: List[List[Optional[str]]], player: str, active_piece:
         return captures
     return moves
 
+def get_random_move(board: List[List[Optional[str]]], player: str, active_piece: Optional[Tuple[int, int]] = None) -> Optional[Dict[str, int]]:
+    """Returns a random valid move for the given player/state."""
+    import random
+    valid_moves = get_valid_moves(board, player, active_piece)
+    if not valid_moves:
+        return None
+        
+    move_tuple = random.choice(valid_moves)
+    return {
+        "start_row": move_tuple[0],
+        "start_col": move_tuple[1],
+        "end_row": move_tuple[2],
+        "end_col": move_tuple[3]
+    }
+
 def is_valid_move(board: List[List[Optional[str]]], move_data: Any, player: str, active_piece: Optional[Tuple[int, int]] = None) -> bool:
     # Handle move_data being a dict or object
     if isinstance(move_data, dict):

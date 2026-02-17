@@ -18,6 +18,7 @@ export interface GameState {
     row: number;
     col: number;
   };
+  mode?: "online" | "cpu" | "local";
 }
 
 export interface Move {

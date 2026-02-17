@@ -39,9 +39,9 @@ class RateLimiter:
         
         # Session buckets: ip -> bucket
         # Storing last access to potentially clean up, but keeping it simple for now
-        self.session_game_create: Dict[str, TokenBucket] = defaultdict(lambda: TokenBucket(capacity=1, refill_rate=1.0))
-        self.session_move: Dict[str, TokenBucket] = defaultdict(lambda: TokenBucket(capacity=1, refill_rate=1.0))
-        self.session_query: Dict[str, TokenBucket] = defaultdict(lambda: TokenBucket(capacity=10, refill_rate=10.0))
+        self.session_game_create: Dict[str, TokenBucket] = defaultdict(lambda: TokenBucket(capacity=5, refill_rate=0.5))
+        self.session_move: Dict[str, TokenBucket] = defaultdict(lambda: TokenBucket(capacity=10, refill_rate=2.0))
+        self.session_query: Dict[str, TokenBucket] = defaultdict(lambda: TokenBucket(capacity=20, refill_rate=10.0))
 
     def check_game_create(self, session_id: str) -> bool:
         # Check global first
