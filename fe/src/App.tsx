@@ -387,12 +387,16 @@ function App() {
       const [startRow, startCol] = selectedSquare;
       
       try {
+        const movePlayerId = (game.mode === "local" && game.current_turn === "black") 
+            ? game.black_player_id || playerId
+            : playerId;
+
         const updatedGame = await makeMove(game.id, {
           start_row: startRow,
           start_col: startCol,
           end_row: row,
           end_col: col,
-          player_id: playerId
+          player_id: movePlayerId
         });
         setGame(updatedGame);
         setSelectedSquare(null);
@@ -631,7 +635,7 @@ function App() {
                   <PlayerControls 
                     game={game} 
                     myColor={myColor} 
-                    playerId={playerId} 
+                    playerId={game.mode === "local" ? game.black_player_id || playerId : playerId} 
                     targetColor={topPlayerColor as "red" | "black"} 
                     playerName={topPlayerName}
                     onGameUpdate={setGame}
@@ -751,7 +755,7 @@ function App() {
                   <PlayerControls 
                     game={game} 
                     myColor={myColor} 
-                    playerId={playerId} 
+                    playerId={game.mode === "local" ? game.red_player_id || playerId : playerId} 
                     targetColor={bottomPlayerColor as "red" | "black"} 
                     playerName={bottomPlayerName}
                     onGameUpdate={setGame}
