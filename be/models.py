@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON
+from sqlalchemy import Column, String, JSON, Integer
 from database import Base
 import uuid
 
@@ -21,3 +21,4 @@ class Game(Base):
     active_piece = Column(JSON, nullable=True) # {row, col} or None
     mode = Column(String, default="online") # "online", "cpu", "local"
     draw_offer = Column(String, nullable=True) # "red", "black", or None
+    draw_timer = Column(Integer, default=0) # Half-moves since last pawn move or capture
