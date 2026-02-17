@@ -31,7 +31,7 @@ const PlayerControls = ({
     // 2. Online Mode AND I am this color
     // Use playerName just to silence unused var warning if needed, or remove it from props if truly unused
     // Actually let's use it for the confirmation dialog
-    const isVisible = game.mode === "local" || (game.mode !== "local" && myColor === targetColor);
+    const isVisible = (game.mode as string) === "local" || (game.mode !== "local" && myColor === targetColor);
     
     if (!isVisible || game.status !== "active") return null;
 
@@ -414,16 +414,6 @@ function App() {
         setError(err.response?.data?.detail || "Invalid move");
       }
     }
-  };
-
-  const handleResign = async () => {
-      if (!game || !window.confirm("Are you sure you want to resign? You will lose the game.")) return;
-      try {
-          const updatedGame = await resignGame(game.id, playerId);
-          setGame(updatedGame);
-      } catch (err: any) {
-          setError(err.response?.data?.detail || "Failed to resign");
-      }
   };
 
   if (loading) return <div className="flex justify-center items-center h-screen bg-stone-900 text-white">Loading...</div>;
