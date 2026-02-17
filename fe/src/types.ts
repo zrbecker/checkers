@@ -20,6 +20,7 @@ export interface GameState {
   };
   mode?: "online" | "cpu" | "local";
   draw_offer?: "red" | "black" | null;
+  draw_timer?: number;
 }
 
 export interface Move {

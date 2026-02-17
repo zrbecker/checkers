@@ -221,7 +221,8 @@ async def make_move(game_id: str, move: Move, db: AsyncSession = Depends(get_db)
         game.winner = winner
         GAMES_ACTIVE.dec()
     # Check for Draw (50-move rule -> 100 half-moves)
-    elif game.draw_timer >= 100:
+    # Reduced to 50 half-moves per user request
+    elif game.draw_timer >= 50:
         game.status = "finished"
         game.winner = "draw"
         GAMES_ACTIVE.dec()
@@ -309,7 +310,8 @@ async def make_ai_move(game_id: str, db: AsyncSession = Depends(get_db)):
         game.winner = winner
         GAMES_ACTIVE.dec()
     # Check for Draw (50-move rule -> 100 half-moves)
-    elif game.draw_timer >= 100:
+    # Reduced to 50 half-moves per user request
+    elif game.draw_timer >= 50:
         game.status = "finished"
         game.winner = "draw"
         GAMES_ACTIVE.dec()
@@ -332,7 +334,8 @@ def format_game_response(game: Game) -> GameState:
         last_move=game.last_move,
         active_piece=game.active_piece,
         mode=game.mode,
-        draw_offer=game.draw_offer
+        draw_offer=game.draw_offer,
+        draw_timer=game.draw_timer
     )
 
 # Serve Frontend

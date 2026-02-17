@@ -716,7 +716,9 @@ function App() {
                         </h2>
                         <div className="text-2xl text-stone-300 mb-8">
                             {game.winner === "draw" ? (
-                                <span className="text-stone-400">By Agreement</span>
+                                <span className="text-stone-400">
+                                    {(game.draw_timer ?? 0) >= 50 ? "50-Move Rule Limit Reached" : "By Agreement"}
+                                </span>
                             ) : (
                                 <>
                                     Winner: <span className="text-amber-400 font-bold">
