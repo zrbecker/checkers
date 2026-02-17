@@ -1,11 +1,144 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { createGame, getGame, makeMove, joinGame, makeAiMove } from "./api";
+import { createGame, getGame, makeMove, joinGame, makeAiMove, resignGame, offerDraw, acceptDraw, rejectDraw } from "./api";
 import type { GameState } from "./types";
 import { Square } from "./components/Square";
 import clsx from "clsx";
 
 const POLLING_INTERVAL = 2000;
+
+// New PlayerControls Component
+const PlayerControls = ({ 
+    game, 
+    myColor, 
+    playerId, 
+    targetColor, 
+    playerName,
+    onGameUpdate 
+}: { 
+    game: GameState, 
+    myColor: string | null, 
+    playerId: string, 
+    targetColor: "red" | "black",
+    playerName: string,
+    onGameUpdate: (game: GameState) => void
+}) => {
+    const [isBusy, setIsBusy] = useState(false);
+
+    // Determine if these controls should be visible/active
+    // Visible if: 
+    // 1. Local Mode (always visible for both sides)
+    // 2. Online Mode AND I am this color
+    // Use playerName just to silence unused var warning if needed, or remove it from props if truly unused
+    // Actually let's use it for the confirmation dialog
+    const isVisible = game.mode === "local" || myColor === targetColor;
+    
+    if (!isVisible || game.status !== "active") return null;
+
+    const handleResign = async () => {
+        // Use playerName in confirmation
+        if (!window.confirm(`Resign as ${targetColor.toUpperCase()} (${playerName})?`)) return;
+        setIsBusy(true);
+        try {
+            const updatedGame = await resignGame(game.id, playerId);
+            onGameUpdate(updatedGame);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to resign");
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleOfferDraw = async () => {
+        setIsBusy(true);
+        try {
+            if (game.mode === "cpu") {
+                // Artificial delay to mimic thinking
+                await new Promise(r => setTimeout(r, 500));
+            }
+            const updatedGame = await offerDraw(game.id, playerId);
+            
+            // If mode is CPU and no draw offer was set, it means rejected
+            if (game.mode === "cpu" && !updatedGame.draw_offer) {
+                 // We could use a toast, but alert is consistent with existing error handling
+                 // Adding a small timeout to let the UI settle if needed, or just alert immediately
+                 // Since we waited 500ms, it should feel like a response.
+                 alert("Computer rejected the draw.");
+            }
+            onGameUpdate(updatedGame);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to offer draw");
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleAcceptDraw = async () => {
+        setIsBusy(true);
+        try {
+            const updatedGame = await acceptDraw(game.id, playerId);
+            onGameUpdate(updatedGame);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to accept draw");
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleRejectDraw = async () => {
+        setIsBusy(true);
+        try {
+            const updatedGame = await rejectDraw(game.id, playerId);
+            onGameUpdate(updatedGame);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to reject draw");
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    if (isBusy) {
+        return (
+            <div className="flex gap-2 justify-center w-full mt-2">
+                <span className="text-stone-400 text-sm animate-pulse">Processing...</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex gap-2 justify-center w-full mt-2">
+             {/* Draw Logic */}
+             {game.draw_offer ? (
+                game.draw_offer !== targetColor ? (
+                    <>
+                        <button onClick={handleAcceptDraw} className="bg-green-600 hover:bg-green-500 text-white font-bold py-1 px-3 text-sm rounded shadow transition-colors">
+                            Accept Draw
+                        </button>
+                        <button onClick={handleRejectDraw} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-1 px-3 text-sm rounded shadow transition-colors">
+                            Reject Draw
+                        </button>
+                    </>
+                ) : (
+                     <div className="text-stone-400 font-bold py-1 px-3 text-sm border border-stone-600 rounded bg-stone-800 cursor-not-allowed">
+                        Draw Offered...
+                    </div>
+                )
+            ) : (
+                <button onClick={handleOfferDraw} className="bg-stone-700 hover:bg-stone-600 text-stone-200 font-bold py-1 px-3 text-sm rounded border border-stone-600 shadow transition-colors">
+                    Offer Draw
+                </button>
+            )}
+            
+            <button onClick={handleResign} className="bg-red-900/50 hover:bg-red-800/80 text-red-200 font-bold py-1 px-3 text-sm rounded border border-red-800/50 shadow transition-colors">
+                Resign
+            </button>
+        </div>
+    );
+};
 
 function App() {
   const { gameId } = useParams();
@@ -127,7 +260,10 @@ function App() {
         
         const stateChanged = JSON.stringify(updatedGame.board) !== JSON.stringify(game.board) || 
                              updatedGame.current_turn !== game.current_turn ||
-                             updatedGame.black_player_id !== game.black_player_id;
+                             updatedGame.black_player_id !== game.black_player_id ||
+                             updatedGame.draw_offer !== game.draw_offer ||
+                             updatedGame.status !== game.status ||
+                             updatedGame.winner !== game.winner;
 
         if (stateChanged) {
           // Check if turn changed to ME
@@ -209,7 +345,9 @@ function App() {
   let myColor: "red" | "black" | "spectator" | null = null;
   if (game) {
       if (game.mode === "local" && game.red_player_id === playerId) {
-          // In local mode, if I own the game, I control whoever's turn it is
+          // In local mode, myColor tracks turn for interaction, 
+          // BUT for visual layout we want a fixed perspective (Red at bottom)
+          // We will decouple "myColor" (identity) from "viewPerspective" (layout)
           myColor = game.current_turn;
       } else {
           if (game.red_player_id === playerId) myColor = "red";
@@ -218,13 +356,18 @@ function App() {
       }
   }
 
+  // Visual Perspective: Who is at the bottom?
+  // Local: Red is always bottom.
+  // Online: Me (if playing), or Red (if spectator).
+  const viewPerspective = (game?.mode === "local") ? "red" : (myColor === "spectator" ? "red" : myColor);
+
   const handleSquareClick = async (visualRow: number, visualCol: number) => {
     if (!game || !myColor) return;
 
     // Transform Visual -> Logic
     let row = visualRow;
     let col = visualCol;
-    if (myColor === "red") {
+    if (viewPerspective === "red") {
         row = 7 - visualRow;
         col = 7 - visualCol;
     }
@@ -251,12 +394,17 @@ function App() {
       const [startRow, startCol] = selectedSquare;
       
       try {
+        let movePlayerId = playerId;
+        if (game.mode === "local" && game.current_turn === "black") {
+            movePlayerId = game.black_player_id || `${playerId}_2`;
+        }
+
         const updatedGame = await makeMove(game.id, {
           start_row: startRow,
           start_col: startCol,
           end_row: row,
           end_col: col,
-          player_id: playerId
+          player_id: movePlayerId
         });
         setGame(updatedGame);
         setSelectedSquare(null);
@@ -433,7 +581,7 @@ function App() {
   let renderBoard = game.board;
   let displayBoard = [...renderBoard.map(r => [...r])]; 
   
-  if (myColor === "red") {
+  if (viewPerspective === "red") {
       displayBoard = displayBoard.reverse().map(row => row.reverse());
   }
 
@@ -443,18 +591,18 @@ function App() {
   let topPlayerColor = "spectator";
   let bottomPlayerColor = "spectator";
 
-  if (myColor === "red") {
-      bottomPlayerName = game.red_player_name || "You (Red)";
+  if (viewPerspective === "red") {
+      bottomPlayerName = game.red_player_name || "Red";
       bottomPlayerColor = "red";
-      topPlayerName = game.black_player_name || "Waiting for Black...";
+      topPlayerName = game.black_player_name || "Black";
       topPlayerColor = "black";
-  } else if (myColor === "black") {
-      bottomPlayerName = game.black_player_name || "You (Black)";
+  } else if (viewPerspective === "black") {
+      bottomPlayerName = game.black_player_name || "Black";
       bottomPlayerColor = "black";
-      topPlayerName = game.red_player_name || "Waiting for Red...";
+      topPlayerName = game.red_player_name || "Red";
       topPlayerColor = "red";
   } else {
-      // Spectator View (Standard: Red Top, Black Bottom)
+      // Fallback/Spectator (should be covered by viewPerspective logic)
       topPlayerName = game.red_player_name || "Red";
       topPlayerColor = "red";
       bottomPlayerName = game.black_player_name || "Black";
@@ -476,16 +624,30 @@ function App() {
           
           {/* TOP PLAYER (Opponent) */}
           <div className={clsx(
-              "w-full px-6 py-3 rounded-t-xl border-t-4 flex justify-between items-center transition-all duration-300",
+              "w-full px-6 py-3 rounded-t-xl border-t-4 flex flex-col justify-between items-center transition-all duration-300",
               topPlayerColor === "red" ? "bg-red-900/20 border-red-600" : "bg-zinc-800/50 border-zinc-500",
               game.current_turn === topPlayerColor && "shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-opacity-40"
           )}>
-              <div className="flex items-center gap-3">
-                  <div className={clsx("w-3 h-3 rounded-full", topPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
-                  <span className="font-bold text-xl tracking-wide text-stone-200">{topPlayerName}</span>
+              <div className="w-full flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className={clsx("w-3 h-3 rounded-full", topPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
+                    <span className="font-bold text-xl tracking-wide text-stone-200">{topPlayerName}</span>
+                </div>
+                {game.current_turn === topPlayerColor && (
+                    <span className="text-xs font-bold uppercase tracking-widest text-stone-400 animate-pulse">Thinking...</span>
+                )}
               </div>
-              {game.current_turn === topPlayerColor && (
-                  <span className="text-xs font-bold uppercase tracking-widest text-stone-400 animate-pulse">Thinking...</span>
+              
+              {/* Top Controls */}
+              {topPlayerColor !== "spectator" && (
+                  <PlayerControls 
+                    game={game} 
+                    myColor={myColor} 
+                    playerId={game.mode === "local" ? (game.black_player_id || `${playerId}_2`) : playerId} 
+                    targetColor={topPlayerColor as "red" | "black"} 
+                    playerName={topPlayerName}
+                    onGameUpdate={setGame}
+                  />
               )}
           </div>
 
@@ -499,7 +661,7 @@ function App() {
                     // Determine logic coords for isSelected/LastMove check
                     let logicRow = rIndex;
                     let logicCol = cIndex;
-                    if (myColor === "red") {
+                    if (viewPerspective === "red") {
                         logicRow = 7 - rIndex;
                         logicCol = 7 - cIndex;
                     }
@@ -549,11 +711,19 @@ function App() {
               {game.winner && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm transition-opacity duration-1000">
                     <div className="bg-stone-800 p-12 rounded-2xl border-4 border-amber-500 text-center shadow-2xl animate-fade-in-up">
-                        <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">{game.winner.toUpperCase()} WINS!</h2>
+                        <h2 className="text-6xl font-black text-amber-400 mb-4 tracking-tight drop-shadow-xl">
+                            {game.winner === "draw" ? "GAME DRAWN!" : `${game.winner.toUpperCase()} WINS!`}
+                        </h2>
                         <div className="text-2xl text-stone-300 mb-8">
-                            Winner: <span className="text-amber-400 font-bold">
-                                {game.winner === "red" ? game.red_player_name : game.black_player_name}
-                            </span>
+                            {game.winner === "draw" ? (
+                                <span className="text-stone-400">By Agreement</span>
+                            ) : (
+                                <>
+                                    Winner: <span className="text-amber-400 font-bold">
+                                        {game.winner === "red" ? game.red_player_name : game.black_player_name}
+                                    </span>
+                                </>
+                            )}
                         </div>
                         <button 
                             onClick={handleBackToLobby}
@@ -574,16 +744,30 @@ function App() {
 
           {/* BOTTOM PLAYER (Me) */}
           <div className={clsx(
-              "w-full px-6 py-3 rounded-b-xl border-b-4 flex justify-between items-center transition-all duration-300",
+              "w-full px-6 py-3 rounded-b-xl border-b-4 flex flex-col justify-between items-center transition-all duration-300",
               bottomPlayerColor === "red" ? "bg-red-900/20 border-red-600" : "bg-zinc-800/50 border-zinc-500",
               game.current_turn === bottomPlayerColor && "shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-opacity-40"
           )}>
-              <div className="flex items-center gap-3">
-                  <div className={clsx("w-3 h-3 rounded-full", bottomPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
-                  <span className="font-bold text-xl tracking-wide text-stone-200">{bottomPlayerName}</span>
+              <div className="w-full flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className={clsx("w-3 h-3 rounded-full", bottomPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
+                    <span className="font-bold text-xl tracking-wide text-stone-200">{bottomPlayerName}</span>
+                </div>
+                {game.current_turn === bottomPlayerColor && (
+                    <span className="text-xs font-bold uppercase tracking-widest text-green-400 animate-pulse">YOUR TURN</span>
+                )}
               </div>
-              {game.current_turn === bottomPlayerColor && (
-                  <span className="text-xs font-bold uppercase tracking-widest text-green-400 animate-pulse">YOUR TURN</span>
+
+              {/* Bottom Controls */}
+              {bottomPlayerColor !== "spectator" && (
+                  <PlayerControls 
+                    game={game} 
+                    myColor={myColor} 
+                    playerId={game.mode === "local" ? game.red_player_id || playerId : playerId} 
+                    targetColor={bottomPlayerColor as "red" | "black"} 
+                    playerName={bottomPlayerName}
+                    onGameUpdate={setGame}
+                  />
               )}
           </div>
       
