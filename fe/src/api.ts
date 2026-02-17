@@ -3,8 +3,8 @@ import type { GameState, Move } from "./types";
 
 const API_URL = import.meta.env.PROD ? "" : "http://localhost:8000";
 
-export const createGame = async (playerId: string, playerName: string): Promise<GameState> => {
-  const response = await axios.post(`${API_URL}/games`, { player_id: playerId, player_name: playerName });
+export const createGame = async (playerId: string, playerName: string, mode: string = "online"): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games`, { player_id: playerId, player_name: playerName, mode });
   return response.data;
 };
 
@@ -20,5 +20,10 @@ export const getGame = async (gameId: string): Promise<GameState> => {
 
 export const makeMove = async (gameId: string, move: Move & { player_id: string }): Promise<GameState> => {
   const response = await axios.post(`${API_URL}/games/${gameId}/move`, move);
+  return response.data;
+};
+
+export const makeAiMove = async (gameId: string): Promise<GameState> => {
+  const response = await axios.post(`${API_URL}/games/${gameId}/ai-move`);
   return response.data;
 };

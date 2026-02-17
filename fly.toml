@@ -6,6 +6,9 @@
 app = 'checkers-game-app'
 primary_region = 'lax'
 
+[deploy]
+  release_command = "alembic upgrade head"
+
 [build]
 
 [http_service]

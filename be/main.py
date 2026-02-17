@@ -72,16 +72,28 @@ async def startup():
 @app.post("/games", response_model=GameState, status_code=status.HTTP_201_CREATED, dependencies=[Depends(check_create_limit)])
 async def create_game(request: CreateGameRequest, db: AsyncSession = Depends(get_db)):
     initial_board = logic.initialize_board()
+    
+    black_player_id = None
+    black_player_name = None
+    
+    if request.mode == "cpu":
+        black_player_id = "CPU"
+        black_player_name = "Computer"
+    elif request.mode == "local":
+        black_player_id = request.player_id
+        black_player_name = "Player 2"
+    
     new_game = Game(
         board_state=initial_board,
         current_turn="red",
         status="active",
         red_player_id=request.player_id,
         red_player_name=request.player_name,
-        black_player_id=None,
-        black_player_name=None,
+        black_player_id=black_player_id,
+        black_player_name=black_player_name,
         last_move=None,
-        active_piece=None
+        active_piece=None,
+        mode=request.mode
     )
     db.add(new_game)
     await db.commit()
@@ -197,6 +209,72 @@ async def make_move(game_id: str, move: Move, db: AsyncSession = Depends(get_db)
     await db.refresh(game)
     return format_game_response(game)
 
+@app.post("/games/{game_id}/ai-move", response_model=GameState, dependencies=[Depends(check_move_limit)])
+async def make_ai_move(game_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Game).where(Game.id == game_id))
+    game = result.scalars().first()
+    
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+        
+    if game.status != "active":
+        raise HTTPException(status_code=400, detail="Game is finished")
+        
+    # Verify it is AI turn
+    if game.mode != "cpu":
+        raise HTTPException(status_code=400, detail="Not a CPU game")
+        
+    # Assume CPU is always Black for now
+    if game.current_turn != "black":
+        raise HTTPException(status_code=400, detail="Not CPU's turn")
+        
+    # Check active piece
+    active_tuple = None
+    if game.active_piece:
+        active_tuple = (game.active_piece["row"], game.active_piece["col"])
+        
+    # Get AI move
+    move_dict = logic.get_random_move(game.board_state, "black", active_tuple)
+    
+    if not move_dict:
+        # No moves available -> CPU loses
+        game.status = "finished"
+        game.winner = "red"
+        GAMES_ACTIVE.dec()
+        await db.commit()
+        await db.refresh(game)
+        return format_game_response(game)
+        
+    # Apply move
+    new_board, turn_finished, next_active_piece = logic.apply_move(game.board_state, move_dict)
+    
+    MOVES_MADE.inc()
+    
+    game.board_state = list(new_board)
+    flag_modified(game, "board_state")
+    
+    game.last_move = move_dict
+    flag_modified(game, "last_move")
+    
+    if turn_finished:
+        game.current_turn = "red"
+        game.active_piece = None
+    else:
+        if next_active_piece:
+            game.active_piece = {"row": next_active_piece[0], "col": next_active_piece[1]}
+            flag_modified(game, "active_piece")
+            
+    # Check winner
+    winner = logic.check_winner(game.board_state, game.current_turn)
+    if winner:
+        game.status = "finished"
+        game.winner = winner
+        GAMES_ACTIVE.dec()
+        
+    await db.commit()
+    await db.refresh(game)
+    return format_game_response(game)
+
 def format_game_response(game: Game) -> GameState:
     return GameState(
         id=str(game.id),
@@ -209,7 +287,8 @@ def format_game_response(game: Game) -> GameState:
         red_player_name=game.red_player_name,
         black_player_name=game.black_player_name,
         last_move=game.last_move,
-        active_piece=game.active_piece
+        active_piece=game.active_piece,
+        mode=game.mode
     )
 
 # Serve Frontend

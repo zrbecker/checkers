@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { createGame, getGame, makeMove, joinGame } from "./api";
+import { createGame, getGame, makeMove, joinGame, makeAiMove } from "./api";
 import type { GameState } from "./types";
 import { Square } from "./components/Square";
 import clsx from "clsx";
@@ -20,6 +20,7 @@ function App() {
   const [joinInputId, setJoinInputId] = useState("");
   const [playerId, setPlayerId] = useState<string>("");
   const [playerName, setPlayerName] = useState<string>("");
+  const [selectedMode, setSelectedMode] = useState<"online" | "cpu" | "local">("online");
 
   // Sound Effect
   const playTurnSound = () => {
@@ -102,6 +103,23 @@ function App() {
   useEffect(() => {
     if (!game || game.status === "finished") return;
 
+    // AI Trigger
+    if (game.mode === "cpu" && game.current_turn === "black" && game.black_player_id === "CPU") {
+        const triggerAi = async () => {
+            try {
+                // Small delay for better UX
+                await new Promise(r => setTimeout(r, 500));
+                const updatedGame = await makeAiMove(game.id);
+                setGame(updatedGame);
+                playTurnSound();
+            } catch (err) {
+                console.error("AI Move failed", err);
+            }
+        };
+        triggerAi();
+        return; // Skip polling if we are waiting for AI
+    }
+
     const interval = setInterval(async () => {
       try {
         const updatedGame = await getGame(game.id);
@@ -143,7 +161,7 @@ function App() {
       
       setLoading(true);
       try {
-          const newGame = await createGame(playerId, playerName);
+          const newGame = await createGame(playerId, playerName, selectedMode);
           setGame(newGame);
           setError(null);
           navigate(`/game/${newGame.id}`);
@@ -187,8 +205,17 @@ function App() {
       navigate("/");
   };
 
-  const myColor = game ? (game.red_player_id === playerId ? "red" : 
-                  game.black_player_id === playerId ? "black" : "spectator") : null;
+  let myColor: "red" | "black" | "spectator" | null = null;
+  if (game) {
+      if (game.mode === "local" && game.red_player_id === playerId) {
+          // In local mode, if I own the game, I control whoever's turn it is
+          myColor = game.current_turn;
+      } else {
+          if (game.red_player_id === playerId) myColor = "red";
+          else if (game.black_player_id === playerId) myColor = "black";
+          else myColor = "spectator";
+      }
+  }
 
   const handleSquareClick = async (visualRow: number, visualCol: number) => {
     if (!game || !myColor) return;
@@ -315,6 +342,27 @@ function App() {
 
                 {/* Create Game */}
                 <div className="text-center">
+                    <div className="flex gap-2 mb-4">
+                        <button 
+                            onClick={() => setSelectedMode("online")}
+                            className={clsx("flex-1 py-2 rounded-lg border-2 font-bold transition-all", selectedMode === "online" ? "border-amber-500 bg-amber-500/20 text-amber-500" : "border-stone-700 text-stone-500 hover:border-stone-600")}
+                        >
+                            Online
+                        </button>
+                        <button 
+                            onClick={() => setSelectedMode("cpu")}
+                            className={clsx("flex-1 py-2 rounded-lg border-2 font-bold transition-all", selectedMode === "cpu" ? "border-amber-500 bg-amber-500/20 text-amber-500" : "border-stone-700 text-stone-500 hover:border-stone-600")}
+                        >
+                            VS CPU
+                        </button>
+                        <button 
+                            onClick={() => setSelectedMode("local")}
+                            className={clsx("flex-1 py-2 rounded-lg border-2 font-bold transition-all", selectedMode === "local" ? "border-amber-500 bg-amber-500/20 text-amber-500" : "border-stone-700 text-stone-500 hover:border-stone-600")}
+                        >
+                            Local
+                        </button>
+                    </div>
+
                     <button 
                         onClick={handleCreateGame}
                         disabled={!playerName || playerName.length < 5}
@@ -322,7 +370,11 @@ function App() {
                     >
                         Create New Game
                     </button>
-                    <p className="mt-2 text-stone-400 text-sm">Start a new game as RED</p>
+                    <p className="mt-2 text-stone-400 text-sm">
+                        {selectedMode === "online" && "Play against a friend online (share link)"}
+                        {selectedMode === "cpu" && "Play against the computer"}
+                        {selectedMode === "local" && "Pass and play on the same device"}
+                    </p>
                 </div>
 
                 <div className="relative flex items-center justify-center my-2">

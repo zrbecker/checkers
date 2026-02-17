@@ -14,6 +14,28 @@ A modern online Checkers game built with **FastAPI** (Python) and **React** (Vit
 - Python (v3.10+)
 - PostgreSQL (or Docker)
 
+## Database Migrations
+
+This project uses **Alembic** for database migrations.
+
+### Running Migrations
+
+To apply database changes (e.g., adding tables or columns), run:
+
+```bash
+cd be
+alembic upgrade head
+```
+
+### Creating Migrations
+
+To generate a new migration after modifying `models.py`:
+
+```bash
+cd be
+alembic revision --autogenerate -m "Description of changes"
+```
+
 ## Setup & Run
 
 ### 1. Database Setup

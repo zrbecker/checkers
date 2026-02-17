@@ -30,6 +30,7 @@ def validate_name(name: str) -> str:
 class CreateGameRequest(BaseModel):
     player_id: str
     player_name: str
+    mode: str = "online" # "online", "cpu", "local"
     
     @field_validator('player_name')
     def name_must_be_valid(cls, v):
@@ -57,6 +58,7 @@ class GameState(BaseModel):
     black_player_name: Optional[str]
     last_move: Optional[dict]
     active_piece: Optional[dict]
+    mode: Optional[str] = "online"
 
     class Config:
         from_attributes = True

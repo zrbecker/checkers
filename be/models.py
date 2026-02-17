@@ -19,3 +19,4 @@ class Game(Base):
     black_player_name = Column(String, nullable=True)
     last_move = Column(JSON, nullable=True) # {start_row, start_col, end_row, end_col}
     active_piece = Column(JSON, nullable=True) # {row, col} or None
+    mode = Column(String, default="online") # "online", "cpu", "local"
