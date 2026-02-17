@@ -62,6 +62,7 @@ class GameState(BaseModel):
     active_piece: Optional[dict]
     mode: Optional[str] = "online"
     draw_offer: Optional[str] = None
+    draw_timer: Optional[int] = 0
 
     class Config:
         from_attributes = True
