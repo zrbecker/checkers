@@ -7,6 +7,99 @@ import clsx from "clsx";
 
 const POLLING_INTERVAL = 2000;
 
+// New PlayerControls Component
+const PlayerControls = ({ 
+    game, 
+    myColor, 
+    playerId, 
+    targetColor, 
+    playerName 
+}: { 
+    game: GameState, 
+    myColor: string | null, 
+    playerId: string, 
+    targetColor: "red" | "black",
+    playerName: string
+}) => {
+    // Determine if these controls should be visible/active
+    // Visible if: 
+    // 1. Local Mode (always visible for both sides)
+    // 2. Online Mode AND I am this color
+    // Use playerName just to silence unused var warning if needed, or remove it from props if truly unused
+    // Actually let's use it for the confirmation dialog
+    const isVisible = game.mode === "local" || (game.mode !== "local" && myColor === targetColor);
+    
+    if (!isVisible || game.status !== "active") return null;
+
+    const handleResign = async () => {
+        // Use playerName in confirmation
+        if (!window.confirm(`Resign as ${targetColor.toUpperCase()} (${playerName})?`)) return;
+        try {
+            await resignGame(game.id, playerId);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to resign");
+        }
+    };
+
+    const handleOfferDraw = async () => {
+        try {
+            await offerDraw(game.id, playerId);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to offer draw");
+        }
+    };
+
+    const handleAcceptDraw = async () => {
+        try {
+            await acceptDraw(game.id, playerId);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to accept draw");
+        }
+    };
+
+    const handleRejectDraw = async () => {
+        try {
+            await rejectDraw(game.id, playerId);
+        } catch (err: any) {
+            console.error(err);
+            alert("Failed to reject draw");
+        }
+    };
+
+    return (
+        <div className="flex gap-2 justify-center w-full mt-2">
+             {/* Draw Logic */}
+             {game.draw_offer ? (
+                game.draw_offer !== targetColor ? (
+                    <>
+                        <button onClick={handleAcceptDraw} className="bg-green-600 hover:bg-green-500 text-white font-bold py-1 px-3 text-sm rounded shadow transition-colors">
+                            Accept Draw
+                        </button>
+                        <button onClick={handleRejectDraw} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-1 px-3 text-sm rounded shadow transition-colors">
+                            Reject Draw
+                        </button>
+                    </>
+                ) : (
+                     <div className="text-stone-400 font-bold py-1 px-3 text-sm border border-stone-600 rounded bg-stone-800 cursor-not-allowed">
+                        Draw Offered...
+                    </div>
+                )
+            ) : (
+                <button onClick={handleOfferDraw} className="bg-stone-700 hover:bg-stone-600 text-stone-200 font-bold py-1 px-3 text-sm rounded border border-stone-600 shadow transition-colors">
+                    Offer Draw
+                </button>
+            )}
+            
+            <button onClick={handleResign} className="bg-red-900/50 hover:bg-red-800/80 text-red-200 font-bold py-1 px-3 text-sm rounded border border-red-800/50 shadow transition-colors">
+                Resign
+            </button>
+        </div>
+    );
+};
+
 function App() {
   const { gameId } = useParams();
   const navigate = useNavigate();
@@ -127,7 +220,10 @@ function App() {
         
         const stateChanged = JSON.stringify(updatedGame.board) !== JSON.stringify(game.board) || 
                              updatedGame.current_turn !== game.current_turn ||
-                             updatedGame.black_player_id !== game.black_player_id;
+                             updatedGame.black_player_id !== game.black_player_id ||
+                             updatedGame.draw_offer !== game.draw_offer ||
+                             updatedGame.status !== game.status ||
+                             updatedGame.winner !== game.winner;
 
         if (stateChanged) {
           // Check if turn changed to ME
@@ -224,7 +320,7 @@ function App() {
     // Transform Visual -> Logic
     let row = visualRow;
     let col = visualCol;
-    if (myColor === "red") {
+    if (myColor === "red" && game.mode !== "local") {
         row = 7 - visualRow;
         col = 7 - visualCol;
     }
@@ -473,7 +569,7 @@ function App() {
   let renderBoard = game.board;
   let displayBoard = [...renderBoard.map(r => [...r])]; 
   
-  if (myColor === "red") {
+  if (myColor === "red" && game.mode !== "local") {
       displayBoard = displayBoard.reverse().map(row => row.reverse());
   }
 
@@ -516,16 +612,29 @@ function App() {
           
           {/* TOP PLAYER (Opponent) */}
           <div className={clsx(
-              "w-full px-6 py-3 rounded-t-xl border-t-4 flex justify-between items-center transition-all duration-300",
+              "w-full px-6 py-3 rounded-t-xl border-t-4 flex flex-col justify-between items-center transition-all duration-300",
               topPlayerColor === "red" ? "bg-red-900/20 border-red-600" : "bg-zinc-800/50 border-zinc-500",
               game.current_turn === topPlayerColor && "shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-opacity-40"
           )}>
-              <div className="flex items-center gap-3">
-                  <div className={clsx("w-3 h-3 rounded-full", topPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
-                  <span className="font-bold text-xl tracking-wide text-stone-200">{topPlayerName}</span>
+              <div className="w-full flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className={clsx("w-3 h-3 rounded-full", topPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
+                    <span className="font-bold text-xl tracking-wide text-stone-200">{topPlayerName}</span>
+                </div>
+                {game.current_turn === topPlayerColor && (
+                    <span className="text-xs font-bold uppercase tracking-widest text-stone-400 animate-pulse">Thinking...</span>
+                )}
               </div>
-              {game.current_turn === topPlayerColor && (
-                  <span className="text-xs font-bold uppercase tracking-widest text-stone-400 animate-pulse">Thinking...</span>
+              
+              {/* Top Controls */}
+              {topPlayerColor !== "spectator" && (
+                  <PlayerControls 
+                    game={game} 
+                    myColor={myColor} 
+                    playerId={playerId} 
+                    targetColor={topPlayerColor as "red" | "black"} 
+                    playerName={topPlayerName}
+                  />
               )}
           </div>
 
@@ -539,7 +648,7 @@ function App() {
                     // Determine logic coords for isSelected/LastMove check
                     let logicRow = rIndex;
                     let logicCol = cIndex;
-                    if (myColor === "red") {
+                    if (myColor === "red" && game.mode !== "local") {
                         logicRow = 7 - rIndex;
                         logicCol = 7 - cIndex;
                     }
@@ -622,50 +731,32 @@ function App() {
 
           {/* BOTTOM PLAYER (Me) */}
           <div className={clsx(
-              "w-full px-6 py-3 rounded-b-xl border-b-4 flex justify-between items-center transition-all duration-300",
+              "w-full px-6 py-3 rounded-b-xl border-b-4 flex flex-col justify-between items-center transition-all duration-300",
               bottomPlayerColor === "red" ? "bg-red-900/20 border-red-600" : "bg-zinc-800/50 border-zinc-500",
               game.current_turn === bottomPlayerColor && "shadow-[0_0_15px_rgba(255,255,255,0.1)] bg-opacity-40"
           )}>
-              <div className="flex items-center gap-3">
-                  <div className={clsx("w-3 h-3 rounded-full", bottomPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
-                  <span className="font-bold text-xl tracking-wide text-stone-200">{bottomPlayerName}</span>
+              <div className="w-full flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className={clsx("w-3 h-3 rounded-full", bottomPlayerColor === "red" ? "bg-red-500" : "bg-zinc-400")}></div>
+                    <span className="font-bold text-xl tracking-wide text-stone-200">{bottomPlayerName}</span>
+                </div>
+                {game.current_turn === bottomPlayerColor && (
+                    <span className="text-xs font-bold uppercase tracking-widest text-green-400 animate-pulse">YOUR TURN</span>
+                )}
               </div>
-              {game.current_turn === bottomPlayerColor && (
-                  <span className="text-xs font-bold uppercase tracking-widest text-green-400 animate-pulse">YOUR TURN</span>
+
+              {/* Bottom Controls */}
+              {bottomPlayerColor !== "spectator" && (
+                  <PlayerControls 
+                    game={game} 
+                    myColor={myColor} 
+                    playerId={playerId} 
+                    targetColor={bottomPlayerColor as "red" | "black"} 
+                    playerName={bottomPlayerName}
+                  />
               )}
           </div>
       
-          {/* Game Controls */}
-          {game.status === "active" && myColor && myColor !== "spectator" && (
-            <div className="mt-4 flex gap-4 justify-center w-full">
-                {/* Draw Logic */}
-                {game.draw_offer ? (
-                    game.draw_offer !== myColor ? (
-                        <>
-                            <button onClick={handleAcceptDraw} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded shadow-lg transition-colors">
-                                Accept Draw
-                            </button>
-                            <button onClick={handleRejectDraw} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded shadow-lg transition-colors">
-                                Reject Draw
-                            </button>
-                        </>
-                    ) : (
-                         <div className="text-stone-400 font-bold py-2 px-4 border border-stone-600 rounded bg-stone-800 cursor-not-allowed">
-                            Draw Offered...
-                        </div>
-                    )
-                ) : (
-                    <button onClick={handleOfferDraw} className="bg-stone-700 hover:bg-stone-600 text-stone-200 font-bold py-2 px-4 rounded border border-stone-600 shadow-lg transition-colors">
-                        Offer Draw
-                    </button>
-                )}
-                
-                <button onClick={handleResign} className="bg-red-900/50 hover:bg-red-800/80 text-red-200 font-bold py-2 px-4 rounded border border-red-800/50 shadow-lg transition-colors">
-                    Resign
-                </button>
-            </div>
-          )}
-
       </div>
 
     </div>

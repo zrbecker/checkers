@@ -325,6 +325,10 @@ async def offer_draw(game_id: str, request: GameActionRequest, db: AsyncSession 
     # If already offered by this player, do nothing (or error?) - doing nothing is fine
     # If offered by opponent, auto-accept? No, explicit accept required by design plan
     
+    # AI Logic: AI always rejects draws immediately (by not setting the offer)
+    if game.mode == "cpu":
+        return format_game_response(game)
+
     game.draw_offer = player_color
     await db.commit()
     await db.refresh(game)
