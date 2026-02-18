@@ -7,7 +7,11 @@ import time
 
 # Override DB dependency
 async def override_get_db():
-    mock_db = AsyncMock()
+    mock_db = MagicMock()
+    mock_db.execute = AsyncMock()
+    mock_db.commit = AsyncMock()
+    mock_db.refresh = AsyncMock()
+    
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = None
     mock_db.execute.return_value = mock_result
@@ -31,7 +35,7 @@ def mock_rate_limiter_time():
 
 @pytest.fixture(autouse=True)
 def reset_limiter(mock_rate_limiter_time):
-    from main import limiter
+    from rate_limiter import limiter
     
     # 1. Sync global buckets to mocked start time
     buckets = [limiter.global_game_create, limiter.global_move, limiter.global_query]
