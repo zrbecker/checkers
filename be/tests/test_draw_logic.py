@@ -14,6 +14,12 @@ async def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
+@pytest.fixture(autouse=True)
+def restore_overrides():
+    overrides = app.dependency_overrides.copy()
+    yield
+    app.dependency_overrides = overrides
+
 @pytest.fixture
 def mock_game():
     game = MagicMock(spec=Game)
@@ -33,7 +39,7 @@ def mock_game():
     game.draw_timer = 0
     return game
 
-@patch("main.flag_modified")
+@patch("routers.games.flag_modified")
 def test_pawn_move_resets_timer(mock_flag_modified, mock_game):
     # Setup Mock DB Session
     mock_db = AsyncMock()
@@ -61,7 +67,7 @@ def test_pawn_move_resets_timer(mock_flag_modified, mock_game):
     assert res.status_code == 200
     assert mock_game.draw_timer == 0
 
-@patch("main.flag_modified")
+@patch("routers.games.flag_modified")
 def test_king_move_increments_timer(mock_flag_modified, mock_game):
     # Setup Mock DB
     mock_db = AsyncMock()
@@ -89,7 +95,7 @@ def test_king_move_increments_timer(mock_flag_modified, mock_game):
     assert res.status_code == 200
     assert mock_game.draw_timer == 51
 
-@patch("main.flag_modified")
+@patch("routers.games.flag_modified")
 def test_draw_condition_reached(mock_flag_modified, mock_game):
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -117,9 +123,8 @@ def test_draw_condition_reached(mock_flag_modified, mock_game):
     assert mock_game.status == "finished"
     assert mock_game.winner == "draw"
 
-@patch("main.flag_modified")
-@patch("main.get_db")
-def test_local_mode_resignation(mock_get_db_dep, mock_flag_modified, mock_game):
+@patch("routers.games.flag_modified")
+def test_local_mode_resignation(mock_flag_modified, mock_game):
     # Setup Mock DB Session
     mock_db = AsyncMock()
     mock_result = MagicMock()
