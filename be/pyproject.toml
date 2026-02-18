@@ -7,6 +7,3 @@ filterwarnings = [
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning"
 ]
 
-[tool.pyright]
-reportUnusedVariable = "none"
-
