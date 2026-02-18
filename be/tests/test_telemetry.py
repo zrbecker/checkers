@@ -1,5 +1,4 @@
 import os
-import pytest
 
 # Use a specific port for testing to avoid conflicts
 os.environ["METRICS_PORT"] = "9099"

@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
 from main import app
 from database import get_db
-import time
 
 # Override DB dependency
 async def override_get_db():

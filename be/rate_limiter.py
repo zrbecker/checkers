@@ -1,6 +1,6 @@
 import time
 from collections import defaultdict
-from typing import Dict, Tuple
+from typing import Dict
 
 class TokenBucket:
     def __init__(self, capacity: int, refill_rate: float):

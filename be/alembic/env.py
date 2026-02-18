@@ -41,9 +41,9 @@ if ":" in final_url and "@" in final_url:
         prefix = final_url.split("://")[0]
         suffix = final_url.split("@")[1]
         masked_url = f"{prefix}://****:****@{suffix}"
-    except:
+    except Exception:
         pass
-print(f"Alembic using database URL: {masked_url}")
+    print(f"Alembic using database URL: {masked_url}")
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -94,6 +94,8 @@ async def run_async_migrations() -> None:
 
     """
     section = config.get_section(config.config_ini_section)
+    if section is None:
+        raise ValueError("Alembic section not found in config")
     section["sqlalchemy.url"] = final_url
     
     connectable = async_engine_from_config(

@@ -38,12 +38,19 @@ setup_telemetry(app)
 setup_db_telemetry(engine)
 
 # Enable CORS
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    origins = allowed_origins_env.split(",")
+else:
+    # Default for local development
+    origins = ["http://localhost:5173", "http://localhost:5174"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "*"], # Allow Vite dev server
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
 
 app.include_router(games_router)
@@ -51,13 +58,14 @@ app.include_router(games_router)
 # Serve Frontend
 frontend_dist = os.getenv("FRONTEND_DIST")
 if frontend_dist and os.path.isdir(frontend_dist):
+    frontend_dist_str = frontend_dist
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         # Check if file exists in dist (e.g. favicon.ico, etc)
-        file_path = os.path.join(frontend_dist, full_path)
+        file_path = os.path.join(frontend_dist_str, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
         # Otherwise return index.html
-        return FileResponse(os.path.join(frontend_dist, "index.html"))
+        return FileResponse(os.path.join(frontend_dist_str, "index.html"))

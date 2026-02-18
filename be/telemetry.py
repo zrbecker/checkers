@@ -2,10 +2,8 @@ from prometheus_client import Counter, Histogram, Gauge, start_http_server
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from fastapi import FastAPI
 from sqlalchemy import event
-from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncEngine
 import time
-import threading
 import os
 
 # --- Business Metrics ---

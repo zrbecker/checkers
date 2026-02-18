@@ -230,7 +230,7 @@ async def make_ai_move(game_id: str, db: AsyncSession = Depends(get_db)):
         
     # Check for Draw Progress (50-move rule)
     sr, sc = move_dict["start_row"], move_dict["start_col"]
-    er, ec = move_dict["end_row"], move_dict["end_col"]
+    er, _ = move_dict["end_row"], move_dict["end_col"]
     
     piece = game.board_state[sr][sc]
     is_pawn = piece and not piece.isupper()
@@ -388,11 +388,10 @@ async def reject_draw(game_id: str, request: GameActionRequest, db: AsyncSession
 
     # Verify rejector is the opponent (or maybe self-cancel?)
     # Let's allow either player to cancel the offer (reject or rescind)
-    player_color = None
     if request.player_id == game.red_player_id:
-        player_color = "red"
+        pass
     elif request.player_id == game.black_player_id:
-        player_color = "black"
+        pass
     else:
         raise HTTPException(status_code=403, detail="Not a player in this game")
 
