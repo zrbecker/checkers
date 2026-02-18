@@ -179,7 +179,7 @@ def test_draw_offer_endpoints(mock_game):
     
     # 2. Reject Draw (Black)
     client.post("/games/test-game/draw/reject", json={"player_id": "p2"})
-    assert mock_game.draw_offer == None
+    assert mock_game.draw_offer is None
     
     # 3. Offer Draw Again (Black)
     client.post("/games/test-game/draw/offer", json={"player_id": "p2"})

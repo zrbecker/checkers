@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator, ConfigDict
-from typing import List, Optional, Union
+from typing import List, Optional
 import string
 
 class Move(BaseModel):
