@@ -69,3 +69,7 @@ if frontend_dist and os.path.isdir(frontend_dist):
             return FileResponse(file_path)
         # Otherwise return index.html
         return FileResponse(os.path.join(frontend_dist_str, "index.html"))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
