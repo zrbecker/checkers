@@ -39,7 +39,7 @@ def mock_game():
     game.draw_timer = 0
     return game
 
-@patch("routers.games.flag_modified")
+@patch("routers.games.move.flag_modified")
 def test_pawn_move_resets_timer(mock_flag_modified, mock_game):
     # Setup Mock DB Session
     mock_db = AsyncMock()
@@ -67,7 +67,7 @@ def test_pawn_move_resets_timer(mock_flag_modified, mock_game):
     assert res.status_code == 200
     assert mock_game.draw_timer == 0
 
-@patch("routers.games.flag_modified")
+@patch("routers.games.move.flag_modified")
 def test_king_move_increments_timer(mock_flag_modified, mock_game):
     # Setup Mock DB
     mock_db = AsyncMock()
@@ -95,7 +95,7 @@ def test_king_move_increments_timer(mock_flag_modified, mock_game):
     assert res.status_code == 200
     assert mock_game.draw_timer == 51
 
-@patch("routers.games.flag_modified")
+@patch("routers.games.move.flag_modified")
 def test_draw_condition_reached(mock_flag_modified, mock_game):
     mock_db = AsyncMock()
     mock_result = MagicMock()
@@ -123,7 +123,7 @@ def test_draw_condition_reached(mock_flag_modified, mock_game):
     assert mock_game.status == "finished"
     assert mock_game.winner == "draw"
 
-@patch("routers.games.flag_modified")
+@patch("routers.games.move.flag_modified")
 def test_local_mode_resignation(mock_flag_modified, mock_game):
     # Setup Mock DB Session
     mock_db = AsyncMock()
