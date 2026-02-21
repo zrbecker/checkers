@@ -19,27 +19,20 @@ from models import Base
 config = context.config
 
 # Set the database URL from our code
-# Ensure we use async driver
-if DATABASE_URL.startswith("postgresql://") and "asyncpg" not in DATABASE_URL:
-    final_url = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-elif DATABASE_URL.startswith("postgres://"):
-    final_url = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://")
-else:
-    final_url = DATABASE_URL
-
-config.set_main_option("sqlalchemy.url", final_url)
+# DATABASE_URL is already processed in be/database.py to ensure asyncpg driver
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Debug: Print DB URL (masked)
-masked_url = final_url
-if ":" in final_url and "@" in final_url:
+masked_url = DATABASE_URL
+if ":" in DATABASE_URL and "@" in DATABASE_URL:
     try:
         # Simple mask
-        prefix = final_url.split("://")[0]
-        suffix = final_url.split("@")[1]
+        prefix = DATABASE_URL.split("://")[0]
+        suffix = DATABASE_URL.split("@")[1]
         masked_url = f"{prefix}://****:****@{suffix}"
     except Exception:
         pass
@@ -96,7 +89,7 @@ async def run_async_migrations() -> None:
     section = config.get_section(config.config_ini_section)
     if section is None:
         raise ValueError("Alembic section not found in config")
-    section["sqlalchemy.url"] = final_url
+    section["sqlalchemy.url"] = DATABASE_URL
     
     connectable = async_engine_from_config(
         section,
