@@ -6,6 +6,10 @@
 app = 'checkers-game-app'
 primary_region = 'lax'
 
+[env]
+  # Skip migrations on startup in production because we use release_command
+  SKIP_MIGRATIONS_ON_STARTUP = "true"
+
 [deploy]
   release_command = "alembic upgrade head"
 

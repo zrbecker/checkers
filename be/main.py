@@ -1,5 +1,7 @@
 import os
 import logging
+import sys
+import subprocess
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,9 +20,24 @@ async def lifespan(app: FastAPI):
     # Suppress uvicorn access logs (200 OKs), keep errors
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-    # Create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Automatic Migration
+    # Run alembic upgrade head to ensure DB is up to date.
+    # We use subprocess to avoid async loop conflicts with alembic's env.py
+    # and ensure we use the same python environment.
+    #
+    # Default behavior: Run migrations (SKIP_MIGRATIONS_ON_STARTUP=false)
+    # Production override: SKIP_MIGRATIONS_ON_STARTUP=true (via fly.toml)
+    skip_migrations = os.getenv("SKIP_MIGRATIONS_ON_STARTUP", "false").lower() == "true"
+    is_testing = "pytest" in sys.modules
+
+    if not skip_migrations and not is_testing:
+        try:
+            subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True)
+            logging.info("Startup migrations executed successfully.")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Migration failed during startup: {e}")
+            # Fail startup if migrations fail to prevent running with broken schema
+            raise e
         
     # Initialize active games count
     async with engine.connect() as conn:
